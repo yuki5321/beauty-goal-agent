@@ -61,6 +61,7 @@ export interface GovernanceAuditCertificate {
 
 export interface AgentStepEvent {
   type: "step" | "observation" | "evaluation_result" | "iteration_start" | "converged" | "circuit_breaker" | "final_result" | "error" | "status";
+  session_id?: string;
   step_name?: string;
   title?: string;
   thought?: string;

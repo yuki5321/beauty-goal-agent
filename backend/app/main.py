@@ -65,6 +65,45 @@ async def optimize_beauty_goal(
         }
     )
 
+@app.post("/api/agent/feedback-replan")
+async def feedback_replan_endpoint(
+    session_id: str = Form(...),
+    goal: str = Form("midface_shortening"),
+    current_plan_json: str = Form(...),
+    user_feedback: str = Form(...),
+    image: UploadFile = File(None)
+):
+    """
+    ユーザーからの自然言語追加フィードバックを受け取り、協調型Replan（Human-in-the-Loop）を実行するSSEエンドポイント
+    """
+    import json
+    try:
+        current_plan = json.loads(current_plan_json)
+    except Exception:
+        current_plan = {}
+
+    fallback_bytes = None
+    if image:
+        fallback_bytes = await image.read()
+
+    event_generator = agent_orchestrator.run_feedback_replan(
+        session_id=session_id,
+        goal=goal,
+        current_plan=current_plan,
+        user_feedback=user_feedback,
+        fallback_image_bytes=fallback_bytes
+    )
+
+    return StreamingResponse(
+        event_generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
 @app.post("/api/session/purge/{session_id}")
 async def purge_session(session_id: str):
     """N-G03: セッション終了時にメモリから生体顔画像データを即時破棄"""

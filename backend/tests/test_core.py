@@ -61,3 +61,39 @@ def test_biometric_memory_pipeline():
     # 即時破棄の確認
     pipe.purge_session(sid)
     assert pipe.get_image(sid) is None
+
+@pytest.mark.anyio
+async def test_feedback_replan_execution():
+    from app.agent.orchestrator import agent_orchestrator
+    from PIL import Image
+    import io
+
+    img = Image.new("RGB", (200, 200), color=(250, 220, 200))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    img_bytes = buf.getvalue()
+
+    sid = "test_feedback_session"
+    current_plan = {
+        "blush_placement": "horizontal_low",
+        "blush_color": "#FF8C7A",
+        "lip_over_ratio": 1.15,
+        "eyeshadow_lower_intensity": 70.0,
+        "bangs_style": "see_through"
+    }
+
+    events = []
+    async for sse in agent_orchestrator.run_feedback_replan(
+        session_id=sid,
+        goal="midface_shortening",
+        current_plan=current_plan,
+        user_feedback="リップを落ち着いた色にして前髪なしを試したい",
+        fallback_image_bytes=img_bytes
+    ):
+        events.append(sse)
+
+    assert len(events) > 0
+    # final_result が含まれていること
+    has_final = any('"type": "final_result"' in e for e in events)
+    assert has_final
+

@@ -6,7 +6,8 @@ import { AgentTerminal } from "./components/AgentTerminal";
 import { BeforeAfterSlider } from "./components/BeforeAfterSlider";
 import { RecipeCard } from "./components/RecipeCard";
 import { GovernanceModal } from "./components/GovernanceModal";
-import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate } from "./types";
+import { InteractiveFeedbackChat } from "./components/InteractiveFeedbackChat";
+import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan } from "./types";
 import { Play, RotateCcw, Sparkles, ShieldAlert, ShieldCheck } from "lucide-react";
 
 export function App() {
@@ -20,6 +21,8 @@ export function App() {
   const [currentScore, setCurrentScore] = useState<number>(0);
   const [currentIteration, setCurrentIteration] = useState<number>(1);
   const [isConverged, setIsConverged] = useState<boolean>(false);
+  const [sessionId, setSessionId] = useState<string>("");
+  const [currentPlan, setCurrentPlan] = useState<StylingPlan | null>(null);
 
   // 最終結果ステート
   const [finalImage, setFinalImage] = useState<string | null>(null);
@@ -34,6 +37,7 @@ export function App() {
     setFinalImage(null);
     setRecipes(null);
     setAuditCert(null);
+    setCurrentPlan(null);
     setEvents([]);
     setCurrentScore(0);
     setIsConverged(false);
@@ -74,67 +78,122 @@ export function App() {
         throw new Error("ストリーミングレスポンスを受信できませんでした。");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("data:")) {
-            const jsonStr = trimmed.replace(/^data:\s*/, "");
-            try {
-              const eventData: AgentStepEvent = JSON.parse(jsonStr);
-              setEvents((prev) => [...prev, eventData]);
-
-              if (eventData.iteration) {
-                setCurrentIteration(eventData.iteration);
-              }
-
-              if (eventData.score !== undefined) {
-                setCurrentScore(eventData.score);
-              }
-
-              if (eventData.type === "converged") {
-                setIsConverged(true);
-              }
-
-              if (eventData.type === "final_result") {
-                if (eventData.simulated_image) {
-                  setFinalImage(eventData.simulated_image);
-                }
-                if (eventData.recipe) {
-                  setRecipes(eventData.recipe);
-                }
-                if (eventData.audit_certificate) {
-                  setAuditCert(eventData.audit_certificate);
-                }
-                if (eventData.final_score !== undefined) {
-                  setCurrentScore(eventData.final_score);
-                }
-              }
-
-              if (eventData.type === "error") {
-                setErrorMessage(eventData.message || "エラーが発生しました。");
-              }
-            } catch (err) {
-              console.error("SSE parse error", err);
-            }
-          }
-        }
-      }
+      await parseSSEStream(response.body);
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || "最適化処理中に通信エラーが発生しました。");
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  // ユーザー対話型の微調整Replanハンドラー (Human-in-the-Loop)
+  const handleFeedbackReplan = async (userFeedback: string) => {
+    if (!currentPlan) return;
+
+    setIsRunning(true);
+    setErrorMessage(null);
+
+    const formData = new FormData();
+    formData.append("session_id", sessionId || "session_default");
+    formData.append("goal", selectedGoal);
+    formData.append("current_plan_json", JSON.stringify(currentPlan));
+    formData.append("user_feedback", userFeedback);
+    if (selectedFile) {
+      formData.append("image", selectedFile);
+    }
+
+    try {
+      const response = await fetch("/api/agent/feedback-replan", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`サーバーエラー: ${response.status} ${response.statusText}`);
+      }
+
+      if (!response.body) {
+        throw new Error("ストリーミングレスポンスを受信できませんでした。");
+      }
+
+      await parseSSEStream(response.body);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || "微調整処理中に通信エラーが発生しました。");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // SSEストリーム共通パーサー
+  const parseSSEStream = async (readableStream: ReadableStream<Uint8Array>) => {
+    const reader = readableStream.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data:")) {
+          const jsonStr = trimmed.replace(/^data:\s*/, "");
+          try {
+            const eventData: AgentStepEvent = JSON.parse(jsonStr);
+            setEvents((prev) => [...prev, eventData]);
+
+            if (eventData.session_id) {
+              setSessionId(eventData.session_id);
+            }
+
+            if (eventData.plan) {
+              setCurrentPlan(eventData.plan);
+            }
+
+            if (eventData.iteration) {
+              setCurrentIteration(eventData.iteration);
+            }
+
+            if (eventData.score !== undefined) {
+              setCurrentScore(eventData.score);
+            }
+
+            if (eventData.type === "converged") {
+              setIsConverged(true);
+            }
+
+            if (eventData.type === "final_result") {
+              if (eventData.simulated_image) {
+                setFinalImage(eventData.simulated_image);
+              }
+              if (eventData.recipe) {
+                setRecipes(eventData.recipe);
+              }
+              if (eventData.audit_certificate) {
+                setAuditCert(eventData.audit_certificate);
+              }
+              if (eventData.final_score !== undefined) {
+                setCurrentScore(eventData.final_score);
+              }
+              if (eventData.plan) {
+                setCurrentPlan(eventData.plan);
+              }
+            }
+
+            if (eventData.type === "error") {
+              setErrorMessage(eventData.message || "エラーが発生しました。");
+            }
+          } catch (err) {
+            console.error("SSE parse error", err);
+          }
+        }
+      }
     }
   };
 
@@ -179,6 +238,7 @@ export function App() {
                 setFinalImage(null);
                 setRecipes(null);
                 setAuditCert(null);
+                setCurrentPlan(null);
               }}
               disabled={isRunning}
             />
@@ -216,6 +276,7 @@ export function App() {
                     setFinalImage(null);
                     setRecipes(null);
                     setAuditCert(null);
+                    setCurrentPlan(null);
                     setCurrentScore(0);
                   }}
                   className="w-full sm:w-auto px-4 py-3.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
@@ -264,6 +325,17 @@ export function App() {
             )}
           </div>
         </section>
+
+        {/* ユーザー対話型微調整Replanエリア (Human-in-the-Loop) */}
+        {currentPlan && (
+          <section className="animate-in fade-in duration-500">
+            <InteractiveFeedbackChat
+              currentPlan={currentPlan}
+              isRunning={isRunning}
+              onSubmitFeedback={handleFeedbackReplan}
+            />
+          </section>
+        )}
 
         {/* 最終レシピ表示エリア（完了時） */}
         {recipes && recipes.length > 0 && (
