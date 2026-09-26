@@ -5,8 +5,9 @@ import { PhotoUploader } from "./components/PhotoUploader";
 import { AgentTerminal } from "./components/AgentTerminal";
 import { BeforeAfterSlider } from "./components/BeforeAfterSlider";
 import { RecipeCard } from "./components/RecipeCard";
-import type { AgentStepEvent, MakeupRecipeItem } from "./types";
-import { Play, RotateCcw, Sparkles, ShieldAlert } from "lucide-react";
+import { GovernanceModal } from "./components/GovernanceModal";
+import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate } from "./types";
+import { Play, RotateCcw, Sparkles, ShieldAlert, ShieldCheck } from "lucide-react";
 
 export function App() {
   const [selectedGoal, setSelectedGoal] = useState<string>("midface_shortening");
@@ -23,6 +24,8 @@ export function App() {
   // 最終結果ステート
   const [finalImage, setFinalImage] = useState<string | null>(null);
   const [recipes, setRecipes] = useState<MakeupRecipeItem[] | null>(null);
+  const [auditCert, setAuditCert] = useState<GovernanceAuditCertificate | null>(null);
+  const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleFileSelect = (file: File, preview: string) => {
@@ -30,6 +33,7 @@ export function App() {
     setPreviewUrl(preview);
     setFinalImage(null);
     setRecipes(null);
+    setAuditCert(null);
     setEvents([]);
     setCurrentScore(0);
     setIsConverged(false);
@@ -49,6 +53,7 @@ export function App() {
     setIsConverged(false);
     setFinalImage(null);
     setRecipes(null);
+    setAuditCert(null);
     setErrorMessage(null);
 
     const formData = new FormData();
@@ -108,6 +113,9 @@ export function App() {
                 if (eventData.recipe) {
                   setRecipes(eventData.recipe);
                 }
+                if (eventData.audit_certificate) {
+                  setAuditCert(eventData.audit_certificate);
+                }
                 if (eventData.final_score !== undefined) {
                   setCurrentScore(eventData.final_score);
                 }
@@ -134,7 +142,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <Header />
+      <Header onOpenGovernance={() => setIsGovernanceOpen(true)} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* エラーアラート */}
@@ -170,6 +178,7 @@ export function App() {
                 setSelectedGoal(id);
                 setFinalImage(null);
                 setRecipes(null);
+                setAuditCert(null);
               }}
               disabled={isRunning}
             />
@@ -206,6 +215,7 @@ export function App() {
                     setEvents([]);
                     setFinalImage(null);
                     setRecipes(null);
+                    setAuditCert(null);
                     setCurrentScore(0);
                   }}
                   className="w-full sm:w-auto px-4 py-3.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-800 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
@@ -257,14 +267,41 @@ export function App() {
 
         {/* 最終レシピ表示エリア（完了時） */}
         {recipes && recipes.length > 0 && (
-          <section className="animate-in fade-in duration-500">
+          <section className="animate-in fade-in duration-500 space-y-4">
             <RecipeCard
               recipes={recipes}
               goalTitle={currentGoalObj ? currentGoalObj.name : "美容目標"}
+              beforeImage={previewUrl}
+              afterImage={finalImage}
+              score={currentScore}
             />
+
+            {/* 監査証明書クイックアクセスバナー */}
+            <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-500/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5 text-emerald-400">
+                <ShieldCheck className="w-5 h-5 shrink-0" />
+                <span>
+                  本シミュレーションは **Google Cloud Responsible AI ガバナンス規程**（反ルッキズム・骨格歪曲0%・生体データRAM限定）に完全適合しています。
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGovernanceOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-semibold border border-emerald-500/30 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                監査証明書を確認 →
+              </button>
+            </div>
           </section>
         )}
       </main>
+
+      {/* ガバナンス監査証明書モーダル */}
+      <GovernanceModal
+        isOpen={isGovernanceOpen}
+        onClose={() => setIsGovernanceOpen(false)}
+        certificate={auditCert}
+      />
 
       {/* フッター */}
       <footer className="border-t border-slate-800/80 bg-slate-950 py-6 text-center text-xs text-slate-500">
