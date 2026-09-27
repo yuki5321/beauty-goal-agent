@@ -19,6 +19,9 @@ export interface MakeupProductItem {
   name: string;
   shade: string;
   type: string;
+  price?: string;
+  grounding_verified?: boolean;
+  source_url?: string;
 }
 
 export interface MakeupRecipeItem {
