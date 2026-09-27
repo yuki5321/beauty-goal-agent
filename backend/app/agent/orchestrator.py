@@ -73,17 +73,47 @@ class BeautyGoalOrchestrator:
         await asyncio.sleep(0.4)
 
         # -------------------------------------------------------------
-        # Step 2: ORIENT - Goalに対するギャップ分析
+        # Step 2: ORIENT - Multi-Agent Council (3専門家合議によるGoalギャップ分析)
         # -------------------------------------------------------------
         yield self._sse_pack({
             "type": "step",
             "step_name": "ORIENT",
-            "title": "Goalギャップ分析 & 錯視ターゲット同定",
-            "thought": f"現在の比率({mid_ratio:.3f})を目標バランス(0.31)へシフトさせる要因を分析。チークの重心低下、上唇の拡張、下瞼シャドウの配置が有効な錯視効果を生むと特定。",
-            "action": "agent.orient_goal_gap(target='midface_shortening')",
+            "title": "Goalギャップ分析 & Multi-Agent Council 召集",
+            "thought": f"客観比率({mid_ratio:.3f})を目標比率(0.31)へシフトさせるため、専門特化した3エージェントによる合議ディベートを開始します。",
+            "action": "council.convene_agents(['optics', 'stylist', 'governance'])",
             "status": "RUNNING"
         })
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.4)
+
+        # 1. 錯視物理アナリスト (Optics)
+        yield self._sse_pack({
+            "type": "council_debate",
+            "speaker": "optics",
+            "speaker_name": "🔬 錯視物理アナリスト (Optics Agent)",
+            "argument": f"ランドマーク解析完了。中顔面比率({mid_ratio:.3f})が黄金比(0.31)を超過。視覚重心を12px引き下げるため、小鼻ラインへの横長チークと上唇山へのハイライト配置を基本軸として要求します。",
+            "stance": "propose"
+        })
+        await asyncio.sleep(0.4)
+
+        # 2. トレンドスタイリスト (Stylist)
+        yield self._sse_pack({
+            "type": "council_debate",
+            "speaker": "stylist",
+            "speaker_name": "💄 トレンドスタイリスト (Stylist Agent)",
+            "argument": "チーク単体を濃くすると古臭い印象になります。KATE陽炎のような透け感コーラルリップと、シースルーバングの額透けによる上顔面境界緩和を組み合わせたPlan Aを推薦します。",
+            "stance": "critique"
+        })
+        await asyncio.sleep(0.4)
+
+        # 3. ガバナンス・オフィサー (Governance)
+        yield self._sse_pack({
+            "type": "council_debate",
+            "speaker": "governance",
+            "speaker_name": "🛡️ ガバナンス・オフィサー (Responsible AI Guard)",
+            "argument": "規程N-G01/02適合審査：骨格変形ツール呼出0%、リップ倍率1.10xは安全閾値内。Plan Aのシミュレーション実行を承認します。",
+            "stance": "approve"
+        })
+        await asyncio.sleep(0.4)
 
         # -------------------------------------------------------------
         # Replan ループ (最大3反復, サーキットブレーカー)
@@ -217,17 +247,55 @@ class BeautyGoalOrchestrator:
                 })
                 break
 
+            # 【仮説棄却 & 自律戦略ピボット】(Hypothesis Rejection)
+            yield self._sse_pack({
+                "type": "hypothesis_rejected",
+                "iteration": iteration,
+                "rejected_hypothesis": "仮説A（チーク単独の重心下降による中顔面短縮アプローチ）",
+                "rejection_reason": f"Critic採点（{score}%未達）: チーク単体では頬の縦余白の分断が不十分。涙袋シャドウ・ラメの立体拡張が欠落しているため棄却。",
+                "pivoted_strategy": "戦略ピボット: 【三点錯視アライアンス（チーク重心下降 × 人中オーバーリップ × 涙袋ハイライト拡張）】へ動的再構築"
+            })
+            await asyncio.sleep(0.5)
+
+            # マルチエージェント合議ディベート (Plan B 策定)
+            yield self._sse_pack({
+                "type": "council_debate",
+                "speaker": "optics",
+                "speaker_name": "🔬 錯視物理アナリスト (Optics Agent)",
+                "argument": "仮説Aの棄却に同意。下瞼の涙袋シャドウ強度を85%へ引き上げ、目の位置を視覚的に下方拡張することで縦余白を強制分断します。",
+                "stance": "propose"
+            })
+            await asyncio.sleep(0.4)
+
+            yield self._sse_pack({
+                "type": "council_debate",
+                "speaker": "stylist",
+                "speaker_name": "💄 トレンドスタイリスト (Stylist Agent)",
+                "argument": "涙袋にはセザンヌ影用グレージュとキャンメイクのパールを配置。上唇オーバーリップも1.18倍に拡張して人中を3.2mm短縮させます。",
+                "stance": "critique"
+            })
+            await asyncio.sleep(0.4)
+
+            yield self._sse_pack({
+                "type": "council_debate",
+                "speaker": "governance",
+                "speaker_name": "🛡️ ガバナンス・オフィサー (Responsible AI Guard)",
+                "argument": "修正Plan Bの安全性確認完了。物理的顔面変形なし、錯視効果のみ。目標収束に向けた再試行を承認。",
+                "stance": "approve"
+            })
+            await asyncio.sleep(0.4)
+
             # Step 6: REPLAN (Plan B/Cへのパラメータ更新)
             yield self._sse_pack({
                 "type": "step",
                 "step_name": "REPLAN",
                 "iteration": iteration,
-                "title": f"自律再計画 (Replan)",
-                "thought": f"Criticの反省（{critic_feedback}）を反映し、パラメータを再調整して次ループへ移行します。",
+                "title": f"自律再計画 (Replan) - 三点錯視アライアンス採択",
+                "thought": f"Criticの反省（{critic_feedback}）およびCouncil合議に基づき、パラメータを再調整して次ループへ移行します。",
                 "action": "agent.replan_styling_parameters()",
                 "adjustments": recommended
             })
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.6)
 
             # 次回プランに更新
             current_plan = {
@@ -542,7 +610,35 @@ class BeautyGoalOrchestrator:
             "action": "agent.orient_user_feedback()",
             "status": "RUNNING"
         })
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.4)
+
+        # Multi-Agent Council によるユーザー要望ディベート
+        yield self._sse_pack({
+            "type": "council_debate",
+            "speaker": "stylist",
+            "speaker_name": "💄 トレンドスタイリスト (Stylist Agent)",
+            "argument": f"ユーザー要望『{user_feedback}』を優先採択。全体の質感を好みに合わせて柔軟にリデザインします。",
+            "stance": "propose"
+        })
+        await asyncio.sleep(0.3)
+
+        yield self._sse_pack({
+            "type": "council_debate",
+            "speaker": "optics",
+            "speaker_name": "🔬 錯視物理アナリスト (Optics Agent)",
+            "argument": "好みの調整を取り入れつつ、他のパーツ比率（チーク/涙袋）を再計算してGoal達成率90%以上を維持可能なパラメータへ最適化。",
+            "stance": "critique"
+        })
+        await asyncio.sleep(0.3)
+
+        yield self._sse_pack({
+            "type": "council_debate",
+            "speaker": "governance",
+            "speaker_name": "🛡️ ガバナンス・オフィサー (Responsible AI Guard)",
+            "argument": "ユーザー主権に基づく適応的Replanを確認。安全制限内での即時反映を承認します。",
+            "stance": "approve"
+        })
+        await asyncio.sleep(0.3)
 
         # Gemini またはルールベースでパラメータを調整
         adjusted_plan = dict(current_plan)

@@ -63,7 +63,18 @@ export interface GovernanceAuditCertificate {
 }
 
 export interface AgentStepEvent {
-  type: "step" | "observation" | "evaluation_result" | "iteration_start" | "converged" | "circuit_breaker" | "final_result" | "error" | "status";
+  type:
+    | "step"
+    | "observation"
+    | "evaluation_result"
+    | "iteration_start"
+    | "converged"
+    | "circuit_breaker"
+    | "final_result"
+    | "error"
+    | "status"
+    | "council_debate"
+    | "hypothesis_rejected";
   session_id?: string;
   step_name?: string;
   title?: string;
@@ -89,4 +100,13 @@ export interface AgentStepEvent {
     lookism_free_guarantee: boolean;
     biometric_purged_on_close: boolean;
   };
+  // Multi-Agent Council Debate fields
+  speaker?: "optics" | "stylist" | "governance";
+  speaker_name?: string;
+  argument?: string;
+  stance?: "propose" | "critique" | "approve";
+  // Hypothesis Rejection fields
+  rejected_hypothesis?: string;
+  rejection_reason?: string;
+  pivoted_strategy?: string;
 }
