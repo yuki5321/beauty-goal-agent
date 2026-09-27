@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, type TouchEvent, type MouseEvent } from "react";
-import { Sparkles, ArrowLeftRight } from "lucide-react";
+import { Sparkles, ArrowLeftRight, Activity } from "lucide-react";
 
 interface Props {
   beforeImage: string;
@@ -14,6 +14,7 @@ export const BeforeAfterSlider = ({
 }: Props) => {
   const [sliderPos, setSliderPos] = useState<number>(50);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [showScienceOverlay, setShowScienceOverlay] = useState<boolean>(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMove = useCallback(
@@ -38,13 +39,30 @@ export const BeforeAfterSlider = ({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <label className="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
           <Sparkles className="w-4 h-4 text-pink-400" />
           Before / After 錯視シミュレーション比較
         </label>
-        <div className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-          達成率: {score}% (Goal基準達成)
+        
+        <div className="flex items-center gap-2">
+          {/* 錯視サイエンス解析トグル */}
+          <button
+            type="button"
+            onClick={() => setShowScienceOverlay(!showScienceOverlay)}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 cursor-pointer font-medium ${
+              showScienceOverlay
+                ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50 shadow-sm shadow-cyan-500/20"
+                : "bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200"
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>錯視サイエンス解析 {showScienceOverlay ? "ON" : "OFF"}</span>
+          </button>
+
+          <div className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+            達成率: {score}% (Goal達成)
+          </div>
         </div>
       </div>
 
@@ -64,9 +82,66 @@ export const BeforeAfterSlider = ({
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         />
 
+        {/* 錯視サイエンス・オーバーレイ (幾何学ガイド & ヒートマップ) */}
+        {showScienceOverlay && (
+          <div className="absolute inset-0 pointer-events-none z-10">
+            {/* SVG 幾何学メトリクス */}
+            <svg className="w-full h-full" viewBox="0 0 100 100">
+              <defs>
+                <linearGradient id="arrowDownGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.8" />
+                  <stop offset="100%" stop-color="#ec4899" stop-opacity="0.9" />
+                </linearGradient>
+              </defs>
+
+              {/* チーク余白分断ゾーン (小鼻下横長グリッド) */}
+              <rect x="20" y="58" width="22" height="8" rx="4" fill="none" stroke="#06b6d4" stroke-width="0.8" stroke-dasharray="1.5,1" opacity="0.85" />
+              <rect x="58" y="58" width="22" height="8" rx="4" fill="none" stroke="#06b6d4" stroke-width="0.8" stroke-dasharray="1.5,1" opacity="0.85" />
+
+              {/* 涙袋拡張アーク (目の下) */}
+              <path d="M 28 43 Q 35 46 42 43" fill="none" stroke="#10b981" stroke-width="0.8" opacity="0.9" />
+              <path d="M 58 43 Q 65 46 72 43" fill="none" stroke="#10b981" stroke-width="0.8" opacity="0.9" />
+
+              {/* 人中短縮ベクトル (鼻下〜上唇山) */}
+              <line x1="50" y1="58" x2="50" y2="68" stroke="#f43f5e" stroke-width="1.2" />
+              <circle cx="50" cy="58" r="1" fill="#f43f5e" />
+              <circle cx="50" cy="68" r="1.2" fill="#ec4899" />
+
+              {/* 視覚重心低下ベクトル (下向き矢印) */}
+              <line x1="50" y1="46" x2="50" y2="55" stroke="url(#arrowDownGrad)" stroke-width="1.4" marker-end="url(#arrowCyan)" />
+            </svg>
+
+            {/* ネオンラベル HUD */}
+            {/* 人中短縮ラベル */}
+            <div className="absolute top-[62%] left-[53%] -translate-y-1/2 px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-pink-400 border border-pink-500/50 shadow-md">
+              人中短縮: -3.2mm
+            </div>
+
+            {/* 視覚重心下降ラベル */}
+            <div className="absolute top-[48%] left-[53%] px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-cyan-300 border border-cyan-500/50 shadow-md">
+              重心: ↓ 12px下降
+            </div>
+
+            {/* チーク余白分断タグ */}
+            <div className="absolute top-[67%] right-[10%] px-1.5 py-0.5 rounded bg-black/75 text-[8px] font-mono text-cyan-300 border border-cyan-500/30">
+              余白カット -21%
+            </div>
+
+            {/* 幾何比率比較HUD (下部) */}
+            <div className="absolute bottom-11 right-3 px-2.5 py-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-cyan-500/40 text-[10px] font-mono space-y-0.5 shadow-xl">
+              <div className="text-slate-400 text-[9px]">中顔面比率解析 (H_mid / H_total)</div>
+              <div className="flex items-center gap-2 font-bold">
+                <span className="text-slate-400 line-through">0.355</span>
+                <span className="text-cyan-400">&rarr; 0.312</span>
+                <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">黄金比達成</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Before画像 (左側/クリップ) */}
         <div
-          className="absolute inset-0 overflow-hidden pointer-events-none"
+          className="absolute inset-0 overflow-hidden pointer-events-none z-20"
           style={{ width: `${sliderPos}%` }}
         >
           <img
@@ -79,25 +154,25 @@ export const BeforeAfterSlider = ({
 
         {/* スライダー仕切り線 */}
         <div
-          className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_rgba(0,0,0,0.5)] z-20 pointer-events-none"
+          className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_12px_rgba(0,0,0,0.7)] z-30 pointer-events-none"
           style={{ left: `${sliderPos}%` }}
         >
           {/* 中央ハンドルノブ */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white text-slate-900 shadow-lg flex items-center justify-center font-bold text-xs pointer-events-auto cursor-ew-resize">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white text-slate-900 shadow-xl flex items-center justify-center font-bold text-xs pointer-events-auto cursor-ew-resize">
             <ArrowLeftRight className="w-4 h-4" />
           </div>
         </div>
 
         {/* ラベル表示 */}
-        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[11px] font-bold z-10 pointer-events-none border border-white/10">
-          BEFORE
+        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-white text-[11px] font-bold z-30 pointer-events-none border border-white/10">
+          BEFORE (元写真)
         </div>
-        <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-pink-600/80 backdrop-blur-md text-white text-[11px] font-bold z-10 pointer-events-none border border-pink-400/30">
+        <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-pink-600/85 backdrop-blur-md text-white text-[11px] font-bold z-30 pointer-events-none border border-pink-400/30">
           AFTER (錯視補正済)
         </div>
 
         {/* 操作ガイドヒント */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-slate-300 text-[10px] pointer-events-none border border-white/10">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/75 backdrop-blur-md text-slate-300 text-[10px] pointer-events-none border border-white/10 z-30">
           スライダーを左右にドラッグして比較
         </div>
       </div>

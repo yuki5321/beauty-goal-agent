@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { Upload, Sparkles, CheckCircle2 } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Upload, Sparkles, CheckCircle2, Camera, X } from "lucide-react";
 
 interface Props {
   previewUrl: string | null;
@@ -7,12 +7,81 @@ interface Props {
   disabled?: boolean;
 }
 
-export const PhotoUploader: React.FC<Props> = ({
+export const PhotoUploader = ({
   previewUrl,
   onFileSelect,
   disabled,
-}) => {
+}: Props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // カメラの起動
+  const startCamera = async () => {
+    setCameraError(null);
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 720 },
+          height: { ideal: 720 },
+        },
+      });
+      setStream(mediaStream);
+      setIsCameraOpen(true);
+    } catch (err: any) {
+      console.error("Camera access error:", err);
+      setCameraError(
+        "カメラの起動に失敗しました。カメラへのアクセスを許可してください（または通常アップロードをご利用ください）。"
+      );
+    }
+  };
+
+  // カメラの停止
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+    setIsCameraOpen(false);
+  };
+
+  useEffect(() => {
+    if (isCameraOpen && videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [isCameraOpen, stream]);
+
+  // 写真の撮影 (スナップショット)
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 512;
+    canvas.height = video.videoHeight || 512;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // 鏡のように左右反転して描画
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `selfie_${Date.now()}.jpg`, {
+          type: "image/jpeg",
+        });
+        const dataUrl = canvas.toDataURL("image/jpeg");
+        onFileSelect(file, dataUrl);
+        stopCamera();
+      }
+    }, "image/jpeg", 0.95);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,7 +186,9 @@ export const PhotoUploader: React.FC<Props> = ({
 
     canvas.toBlob((blob) => {
       if (blob) {
-        const file = new File([blob], "demo_sample_face.jpg", { type: "image/jpeg" });
+        const file = new File([blob], "demo_sample_face.jpg", {
+          type: "image/jpeg",
+        });
         const dataUrl = canvas.toDataURL("image/jpeg");
         onFileSelect(file, dataUrl);
       }
@@ -126,21 +197,41 @@ export const PhotoUploader: React.FC<Props> = ({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <label className="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-pink-500"></span>
           正面の顔写真（自撮り）を入力
         </label>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={loadDemoSamplePhoto}
-          className="text-xs text-pink-400 hover:text-pink-300 font-medium flex items-center gap-1 underline underline-offset-2 transition-colors cursor-pointer"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          デモ用サンプル写真を読み込む
-        </button>
+        
+        <div className="flex items-center gap-3">
+          {/* スマートミラー：インカメラ起動ボタン */}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={startCamera}
+            className="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors cursor-pointer bg-cyan-950/40 px-2.5 py-1 rounded-lg border border-cyan-500/30"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>カメラで撮影</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={loadDemoSamplePhoto}
+            className="text-xs text-pink-400 hover:text-pink-300 font-medium flex items-center gap-1 underline underline-offset-2 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>デモ用サンプル</span>
+          </button>
+        </div>
       </div>
+
+      {cameraError && (
+        <div className="text-xs text-rose-400 bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20">
+          {cameraError}
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -188,11 +279,58 @@ export const PhotoUploader: React.FC<Props> = ({
               クリックまたは写真をドラッグ＆ドロップ
             </p>
             <p className="text-xs text-slate-400 max-w-xs">
-              JPG / PNG 形式（正面向き・前髪や輪郭がわかりやすい写真が最適です）
+              JPG / PNG 形式（右上の「カメラで撮影」からインカメラ自撮りも可能）
             </p>
           </div>
         )}
       </div>
+
+      {/* スマートミラー撮影モーダル */}
+      {isCameraOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-slate-900 border border-cyan-500/40 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
+                <Camera className="w-4 h-4" />
+                <span>スマートミラー：正面顔撮影</span>
+              </div>
+              <button
+                onClick={stopCamera}
+                className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="relative aspect-square w-full bg-black overflow-hidden flex items-center justify-center">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover -scale-x-100"
+              />
+              {/* 正面ガイド枠 */}
+              <div className="absolute inset-8 rounded-full border-2 border-dashed border-cyan-400/50 pointer-events-none flex items-center justify-center">
+                <span className="text-[11px] text-cyan-300/80 bg-black/50 px-2 py-0.5 rounded-full font-mono">
+                  枠内に顔を合わせてください
+                </span>
+              </div>
+            </div>
+
+            <div className="p-5 bg-slate-950 flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={capturePhoto}
+                className="flex items-center gap-2 px-8 py-3.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm shadow-lg shadow-cyan-500/25 cursor-pointer transition-all scale-100 hover:scale-105 active:scale-95"
+              >
+                <Camera className="w-4 h-4" />
+                <span>パシャッと撮影する</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
