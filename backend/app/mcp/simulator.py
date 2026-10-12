@@ -67,7 +67,9 @@ class YouCamVirtualTryOnSimulator:
         blush_color: str = "#FF8C7A",
         lip_over_ratio: float = 1.15,
         eyeshadow_lower_intensity: float = 60.0,
-        bangs_style: str = "see_through"
+        bangs_style: str = "see_through",
+        blush_intensity: float = 45.0,
+        lip_intensity: float = 45.0
     ) -> bytes:
         """
         メイク・前髪の試着パラメータを合成した新しい画像バイトを生成（オンメモリ）
@@ -99,7 +101,7 @@ class YouCamVirtualTryOnSimulator:
         # チークカラーの解析 (RGB)
         color_hex = blush_color.lstrip("#")
         cr, cg, cb = tuple(int(color_hex[i:i+2], 16) for i in (0, 2, 4))
-        blush_alpha = 70
+        blush_alpha = int(min(140, 70 * blush_intensity / 45.0))  # 濃さ45で従来の70
 
         # 左右の頬にチークを描画
         draw.ellipse([eye_left_x - rx, by - ry, eye_left_x + rx, by + ry], fill=(cr, cg, cb, blush_alpha))
@@ -120,7 +122,7 @@ class YouCamVirtualTryOnSimulator:
         # --- C. リップ (Lipstick & Overlip) ---
         lip_w = w * 0.12
         lip_h = h * 0.04 * (lip_over_ratio)
-        lip_color = (220, 80, 95, 95)
+        lip_color = (220, 80, 95, int(min(170, 95 * lip_intensity / 45.0)))
         # 上唇
         draw.ellipse([cx - lip_w, lip_y - (lip_h * 0.8), cx + lip_w, lip_y + (lip_h * 0.3)], fill=lip_color)
         # 下唇

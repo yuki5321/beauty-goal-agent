@@ -29,7 +29,8 @@ FORBIDDEN_TOOLS = [
 PARAMETER_LIMITS = {
     "lip_over_ratio": (1.0, 1.3),  # 最大30%のオーバーリップまで
     "eyeshadow_lower_intensity": (0, 100),
-    "blush_spread": (0.5, 2.0)
+    "blush_intensity": (0, 90),  # 不自然な厚塗りを避ける上限
+    "lip_intensity": (0, 90),
 }
 
 class GovernanceViolationError(Exception):

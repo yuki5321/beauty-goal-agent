@@ -14,7 +14,9 @@ from app.governance.guardrail import SafetyGuardrail
 INITIAL_PLAN = {
     "blush_placement": "horizontal_low",
     "blush_color": "#FF8C7A",
+    "blush_intensity": 45.0,
     "lip_over_ratio": 1.05,
+    "lip_intensity": 45.0,
     "eyeshadow_lower_intensity": 30.0,
     "bangs_style": "none"
 }
@@ -22,6 +24,8 @@ INITIAL_PLAN = {
 BLUSH_PLACEMENTS = {"horizontal_low", "apple_high", "diagonal_temple"}
 BANGS_STYLES = {"see_through", "curtain", "full_straight", "none"}
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+KEYWORD_INTENSITY_STEP = 20.0  # 「濃く」「薄く」の要望で動かす濃さの幅
 
 NEUTRAL_THOUGHT = "Goalに向けた錯視パラメータを比率の視覚的調整の観点で再構成しました。"
 
@@ -48,7 +52,7 @@ def _normalize_plan(raw: Any, base: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     bangs = raw.get("bangs_style")
     if bangs in BANGS_STYLES:
         plan["bangs_style"] = bangs
-    for key in ("lip_over_ratio", "eyeshadow_lower_intensity"):
+    for key in ("lip_over_ratio", "eyeshadow_lower_intensity", "blush_intensity", "lip_intensity"):
         try:
             plan[key] = float(raw[key])
         except (KeyError, TypeError, ValueError):
@@ -85,15 +89,21 @@ def _keyword_feedback(current_plan: Dict[str, Any], user_feedback: str) -> PlanD
     if "リップ" in user_feedback or "唇" in user_feedback or "lip" in fb_lower:
         if "落ち着" in user_feedback or "薄" in user_feedback or "ナチュラル" in user_feedback:
             adjusted_plan["lip_over_ratio"] = 1.08
-            thought_msg += "リップのオーバー幅をナチュラルに微調整。"
+            adjusted_plan["lip_intensity"] = float(adjusted_plan.get("lip_intensity", 45.0)) - KEYWORD_INTENSITY_STEP
+            thought_msg += "リップのオーバー幅と濃さをナチュラルに微調整。"
         elif "濃" in user_feedback or "ぷっくり" in user_feedback or "強調" in user_feedback:
             adjusted_plan["lip_over_ratio"] = 1.25
-            thought_msg += "リップのオーバー幅とハイライトを強調。"
+            adjusted_plan["lip_intensity"] = float(adjusted_plan.get("lip_intensity", 45.0)) + KEYWORD_INTENSITY_STEP
+            thought_msg += "リップのオーバー幅と濃さを強調。"
 
     if "チーク" in user_feedback or "頬" in user_feedback or "blush" in fb_lower:
         if "薄" in user_feedback or "ナチュラル" in user_feedback:
             adjusted_plan["blush_color"] = "#FFA896"
+            adjusted_plan["blush_intensity"] = float(adjusted_plan.get("blush_intensity", 45.0)) - KEYWORD_INTENSITY_STEP
             thought_msg += "チークを淡いソフトトーンへシフト。"
+        elif "濃" in user_feedback or "しっかり" in user_feedback:
+            adjusted_plan["blush_intensity"] = float(adjusted_plan.get("blush_intensity", 45.0)) + KEYWORD_INTENSITY_STEP
+            thought_msg += "チークの発色を濃くしました。"
         elif "大人" in user_feedback or "上" in user_feedback:
             adjusted_plan["blush_placement"] = "apple_high"
             thought_msg += "チークをやや高い位置へシフト。"

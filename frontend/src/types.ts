@@ -9,7 +9,9 @@ export interface GoalOption {
 export interface StylingPlan {
   blush_placement: string;
   blush_color: string;
+  blush_intensity?: number;
   lip_over_ratio: number;
+  lip_intensity?: number;
   eyeshadow_lower_intensity: number;
   bangs_style: string;
 }

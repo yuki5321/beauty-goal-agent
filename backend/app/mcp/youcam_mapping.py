@@ -42,6 +42,9 @@ BANG_TEMPLATES: Dict[str, Dict[str, str]] = {
     },
 }
 
+# チーク・リップの濃さの既定値（プランに無い場合。比率モデルの係数1.0に対応）
+DEFAULT_INTENSITY = 45.0
+
 LIP_COLOR = "#D9737A"
 CONCEALER_COLOR = "#F2D6C4"
 HIGHLIGHTER_COLOR = "#FFF4EC"
@@ -55,12 +58,15 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
     placement = plan.get("blush_placement", "horizontal_low")
     lip_over = float(plan.get("lip_over_ratio", 1.0))
     under_eye = float(plan.get("eyeshadow_lower_intensity", 0.0))
+    blush_intensity = float(plan.get("blush_intensity", DEFAULT_INTENSITY))
+    lip_intensity = float(plan.get("lip_intensity", DEFAULT_INTENSITY))
 
     effects: List[Dict[str, Any]] = [
         {
             "category": "blush",
             "pattern": {"name": BLUSH_PATTERNS.get(placement, BLUSH_PATTERNS["horizontal_low"])},
-            "palettes": [{"color": plan.get("blush_color", "#FF8C7A"), "texture": "matte", "colorIntensity": 55}],
+            "palettes": [{"color": plan.get("blush_color", "#FF8C7A"), "texture": "matte",
+                          "colorIntensity": _pct(blush_intensity)}],
         },
         {
             "category": "lip_liner",
@@ -68,8 +74,8 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
             "palettes": [{
                 "color": LIP_COLOR,
                 "texture": "matte",
-                "colorIntensity": 60,
-                "thickness": _pct(30 + (lip_over - 1.0) / 0.3 * 50),
+                "colorIntensity": _pct(40 + lip_intensity * 0.4),
+                "thickness": _pct(20 + (lip_over - 1.0) / 0.3 * 70),
                 "smoothness": 60,
             }],
         },
@@ -77,7 +83,8 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
             "category": "lip_color",
             "shape": {"name": LIP_SHAPE},
             "style": {"type": "full"},
-            "palettes": [{"color": LIP_COLOR, "texture": "sheer", "colorIntensity": 60, "transparencyIntensity": 40}],
+            "palettes": [{"color": LIP_COLOR, "texture": "sheer", "colorIntensity": _pct(lip_intensity),
+                          "transparencyIntensity": _pct(60 - lip_intensity * 0.5)}],
         },
     ]
 
@@ -86,7 +93,7 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
             "category": "concealer",
             "palettes": [{
                 "color": CONCEALER_COLOR,
-                "colorIntensity": _pct(under_eye * 0.3),
+                "colorIntensity": _pct(under_eye * 0.4),
                 "colorUnderEyeIntensity": _pct(under_eye),
                 "coverageLevel": 40,
             }],
@@ -96,11 +103,11 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
             "pattern": {"name": HIGHLIGHTER_PATTERN},
             "palettes": [{
                 "color": HIGHLIGHTER_COLOR,
-                "glowIntensity": _pct(under_eye * 0.5),
+                "glowIntensity": _pct(under_eye * 0.6),
                 "shimmerIntensity": _pct(under_eye * 0.4),
                 "shimmerDensity": 40,
                 "shimmerSize": 30,
-                "colorIntensity": _pct(under_eye * 0.6),
+                "colorIntensity": _pct(under_eye * 0.8),
             }],
         })
     return effects

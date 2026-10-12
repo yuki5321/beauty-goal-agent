@@ -53,7 +53,8 @@ class ProportionAnalyzer:
         blush_placement: str,
         lip_over_ratio: float,
         eyeshadow_lower_intensity: float,
-        bangs_style: str
+        bangs_style: str,
+        blush_intensity: float = 45.0
     ) -> float:
         """
         メイク・ヘアの錯視パラメータによる見かけの中顔面比率のシフト量を計算
@@ -64,10 +65,12 @@ class ProportionAnalyzer:
         """
         shift = 0.0
 
+        # チークの濃さで分断効果を増減（濃さ45で係数1.0）
+        blush_factor = 0.5 + max(0.0, blush_intensity) / 90.0
         if blush_placement == "horizontal_low":
-            shift -= 0.018
+            shift -= 0.018 * blush_factor
         elif blush_placement == "apple_high":
-            shift -= 0.005
+            shift -= 0.005 * blush_factor
 
         if lip_over_ratio > 1.0:
             shift -= (lip_over_ratio - 1.0) * 0.08  # 例: 1.15なら約 -0.012

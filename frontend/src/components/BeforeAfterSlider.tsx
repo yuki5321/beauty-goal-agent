@@ -35,6 +35,8 @@ const BANGS_LABELS: Record<string, string> = {
   none: "なし",
 };
 
+const formatLevel = (value?: number) => (typeof value === "number" ? `${Math.round(value)}` : "—");
+
 type LightingMode = "natural" | "office" | "cafe" | "night";
 
 interface LightingPreset {
@@ -232,14 +234,22 @@ export const BeforeAfterSlider = ({
           )}
 
           {plan && (
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="grid grid-cols-3 gap-2 text-[11px]">
               <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
                 <div className="text-slate-500">チーク配置</div>
                 <div className="font-semibold text-slate-100">{BLUSH_LABELS[plan.blush_placement] ?? plan.blush_placement}</div>
               </div>
               <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-500">チーク濃さ</div>
+                <div className="font-semibold text-pink-300 font-mono">{formatLevel(plan.blush_intensity)}</div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
                 <div className="text-slate-500">オーバーリップ</div>
                 <div className="font-semibold text-pink-300 font-mono">x{plan.lip_over_ratio.toFixed(2)}</div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-500">リップ濃さ</div>
+                <div className="font-semibold text-pink-300 font-mono">{formatLevel(plan.lip_intensity)}</div>
               </div>
               <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
                 <div className="text-slate-500">涙袋強調</div>

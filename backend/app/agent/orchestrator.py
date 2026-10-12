@@ -140,7 +140,7 @@ class BeautyGoalOrchestrator:
                 "step_name": "DECIDE",
                 "iteration": iteration,
                 "title": f"スタイリング仮説の策定 (Plan {plan_label})",
-                "thought": f"探索反復 #{iteration}: {plan_thought} [チーク: {current_plan['blush_placement']}, オーバーリップ: x{current_plan['lip_over_ratio']}, 涙袋強調度: {current_plan['eyeshadow_lower_intensity']}%, 前髪: {current_plan['bangs_style']}]",
+                "thought": f"探索反復 #{iteration}: {plan_thought} [チーク: {current_plan['blush_placement']}（濃さ{current_plan.get('blush_intensity', 45):.0f}）, オーバーリップ: x{current_plan['lip_over_ratio']}（濃さ{current_plan.get('lip_intensity', 45):.0f}）, 涙袋強調度: {current_plan['eyeshadow_lower_intensity']}%, 前髪: {current_plan['bangs_style']}]",
                 "action": plan_action,
                 "plan": current_plan
             })
@@ -335,7 +335,8 @@ class BeautyGoalOrchestrator:
             plan.get("blush_placement", "horizontal_low"),
             float(plan.get("lip_over_ratio", 1.0)),
             float(plan.get("eyeshadow_lower_intensity", 0.0)),
-            plan.get("bangs_style", "none")
+            plan.get("bangs_style", "none"),
+            blush_intensity=float(plan.get("blush_intensity", 45.0))
         )
         return {
             "observed_mid_ratio": round(observed, 4),
@@ -346,7 +347,8 @@ class BeautyGoalOrchestrator:
     @staticmethod
     def _summarize_plan(plan: Dict[str, Any]) -> str:
         return (
-            f"チーク {plan.get('blush_placement')} / オーバーリップ x{float(plan.get('lip_over_ratio', 1.0)):.2f} / "
+            f"チーク {plan.get('blush_placement')}（濃さ{float(plan.get('blush_intensity', 45)):.0f}） / "
+            f"オーバーリップ x{float(plan.get('lip_over_ratio', 1.0)):.2f}（濃さ{float(plan.get('lip_intensity', 45)):.0f}） / "
             f"涙袋 {float(plan.get('eyeshadow_lower_intensity', 0)):.0f}% / 前髪 {plan.get('bangs_style')}"
         )
 
@@ -355,7 +357,9 @@ class BeautyGoalOrchestrator:
         labels = {
             "blush_placement": "チーク配置",
             "blush_color": "チークカラー",
+            "blush_intensity": "チーク濃さ",
             "lip_over_ratio": "オーバーリップ倍率",
+            "lip_intensity": "リップ濃さ",
             "eyeshadow_lower_intensity": "涙袋強調度",
             "bangs_style": "前髪",
         }

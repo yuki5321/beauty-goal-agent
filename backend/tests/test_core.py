@@ -227,7 +227,9 @@ def test_planner_normalizes_llm_output():
     assert plan == {
         "blush_placement": "horizontal_low",
         "blush_color": "#FF8C7A",
+        "blush_intensity": 45.0,
         "lip_over_ratio": 1.3,
+        "lip_intensity": 45.0,
         "eyeshadow_lower_intensity": 80.0,
         "bangs_style": "curtain",
     }
@@ -612,3 +614,52 @@ def test_critic_gemini_path_returns_element_scores(monkeypatch):
     assert result["goal_similarity_score"] == 80
     assert "bangs" not in result["element_scores"]  # bangs_style=none は評価対象外
     assert result["recommended_adjustment"]["lip_over_ratio"] == 1.2
+
+def test_youcam_mapping_follows_intensity_levers():
+    from app.mcp.youcam_mapping import plan_to_effects
+
+    for level in (0.0, 45.0, 90.0):
+        effects = {e["category"]: e for e in plan_to_effects(
+            {"blush_intensity": level, "lip_intensity": level, "lip_over_ratio": 1.1, "eyeshadow_lower_intensity": 70.0})}
+        assert effects["blush"]["palettes"][0]["colorIntensity"] == int(level)
+        assert effects["lip_color"]["palettes"][0]["colorIntensity"] == int(level)
+        assert "morphology" not in effects["lip_color"]
+
+    def thickness(ratio):
+        effects = {e["category"]: e for e in plan_to_effects({"lip_over_ratio": ratio})}
+        return effects["lip_liner"]["palettes"][0]["thickness"]
+    assert thickness(1.0) == 20 and thickness(1.3) == 90
+
+    # 濃さキーの無い古いプランは既定値45
+    legacy = {e["category"]: e for e in plan_to_effects({"lip_over_ratio": 1.0})}
+    assert legacy["blush"]["palettes"][0]["colorIntensity"] == 45
+
+def test_intensity_levers_are_clamped():
+    from app.agent.planner import _normalize_plan, INITIAL_PLAN
+
+    clamped = SafetyGuardrail.clamp_parameters({"blush_intensity": 120, "lip_intensity": -5})
+    assert clamped["blush_intensity"] == 90 and clamped["lip_intensity"] == 0
+
+    plan = _normalize_plan({"blush_intensity": 95, "lip_intensity": "x"}, INITIAL_PLAN)
+    assert plan["blush_intensity"] == 90 and plan["lip_intensity"] == 45.0
+
+def test_rule_replan_raises_intensity_when_gap_remains():
+    from app.agent.evaluator import VisualCriticAgent
+    from app.agent.planner import INITIAL_PLAN
+
+    adjusted, changes = VisualCriticAgent._propose_adjustment(dict(INITIAL_PLAN), 0.02)
+    assert adjusted["blush_intensity"] == 60 and adjusted["lip_intensity"] == 60
+    lowered, _ = VisualCriticAgent._propose_adjustment(dict(INITIAL_PLAN), -0.02)
+    assert lowered["blush_intensity"] == 30
+
+def test_ratio_model_blush_intensity_factor():
+    args = (0.36, "horizontal_low", 1.0, 0.0, "none")
+    legacy = ProportionAnalyzer.simulate_perceived_ratio_shift(*args)
+    assert ProportionAnalyzer.simulate_perceived_ratio_shift(*args, blush_intensity=45.0) == legacy
+    assert ProportionAnalyzer.simulate_perceived_ratio_shift(*args, blush_intensity=90.0) < legacy
+
+def test_keyword_feedback_moves_intensity():
+    from app.agent.planner import _keyword_feedback, INITIAL_PLAN
+
+    assert _keyword_feedback(INITIAL_PLAN, "チークをもっと濃く").plan["blush_intensity"] == 65.0
+    assert _keyword_feedback(INITIAL_PLAN, "リップは薄く").plan["lip_intensity"] == 25.0
