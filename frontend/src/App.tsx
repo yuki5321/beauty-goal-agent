@@ -414,7 +414,7 @@ export function App() {
       {/* フッター */}
       <footer className="border-t border-slate-800/80 bg-slate-950 py-6 text-center text-xs text-slate-500">
         <p>
-          Beauty Goal Agent &copy; 2026. Built with Google Cloud Run, Gemini 2.0 / 1.5, and YouCam MCP.
+          Beauty Goal Agent &copy; 2026. Built with Google Cloud Run, Gemini, and YouCam MCP.
         </p>
         <p className="mt-1 text-[11px] text-slate-400">
           ※本システムは他者基準の顔採点・評価を行わず、ユーザー自らが定めた錯視効果の最適化のみを自律的に探索します。

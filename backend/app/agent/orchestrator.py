@@ -280,7 +280,7 @@ class BeautyGoalOrchestrator:
             "type": "step",
             "step_name": "GROUNDING",
             "title": "実在コスメのリアルタイム検索 & 検証 (Google Search Grounding)",
-            "thought": "Gemini 2.0 Flash の Google Search Grounding ツールで、錯視レシピの推奨コスメが現在も流通しているかを検索確認します（APIキー未設定時は未検証の候補として提示）。",
+            "thought": "Gemini の Google Search Grounding ツールで、錯視レシピの推奨コスメが現在も流通しているかを検索確認します（APIキー未設定時は未検証の候補として提示）。",
             "action": "gemini.models.generate_content(tools=[types.Tool(google_search=types.GoogleSearch())])",
             "status": "RUNNING"
         })
@@ -614,7 +614,7 @@ class BeautyGoalOrchestrator:
         if client is None:
             return curated_recipes
 
-        # Gemini 2.0 Flash + Google Search Grounding の呼び出しを試行
+        # Gemini + Google Search Grounding の呼び出しを試行
         try:
             from google.genai import types
 
