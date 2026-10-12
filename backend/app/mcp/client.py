@@ -73,7 +73,9 @@ class YouCamMCPClient:
             blush_color=plan.get("blush_color", "#FF8C7A"),
             lip_over_ratio=float(plan.get("lip_over_ratio", 1.0)),
             eyeshadow_lower_intensity=float(plan.get("eyeshadow_lower_intensity", 0.0)),
-            bangs_style=plan.get("bangs_style", "none")
+            bangs_style=plan.get("bangs_style", "none"),
+            blush_intensity=float(plan.get("blush_intensity", 45.0)),
+            lip_intensity=float(plan.get("lip_intensity", 45.0))
         )
         return TryOnResult(image, "simulator", fallback_reason=fallback_reason, bangs_style=bangs_style)
 

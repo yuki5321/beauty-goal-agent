@@ -13,6 +13,8 @@ from app.observability.logger import agent_logger
 EYESHADOW_STEP = 25.0
 LIP_OVER_STEP = 0.05
 LIP_OVER_SOFT_MAX = 1.25  # ガードレール上限(1.3)より手前で止める
+INTENSITY_STEP = 15.0     # チーク・リップの濃さの1段階
+INTENSITY_MAX = 90.0      # ガードレール上限と同じ
 # 目標比率からこの範囲内なら調整不要とみなす
 RATIO_TOLERANCE = 0.005
 
@@ -155,7 +157,8 @@ Goal: {goal}
             params.get("blush_placement", "horizontal_low"),
             float(params.get("lip_over_ratio", 1.0)),
             float(params.get("eyeshadow_lower_intensity", 0.0)),
-            params.get("bangs_style", "none")
+            params.get("bangs_style", "none"),
+            blush_intensity=float(params.get("blush_intensity", 45.0))
         )
         score = ProportionAnalyzer.calculate_goal_score(goal, perceived)
         is_met = score >= settings.SCORE_CONVERGENCE_THRESHOLD
@@ -193,6 +196,8 @@ Goal: {goal}
 
         eyeshadow = float(params.get("eyeshadow_lower_intensity", 0.0))
         lip = float(params.get("lip_over_ratio", 1.0))
+        blush_level = float(params.get("blush_intensity", 45.0))
+        lip_level = float(params.get("lip_intensity", 45.0))
 
         if gap > 0:
             if params.get("blush_placement") != "horizontal_low":
@@ -204,6 +209,12 @@ Goal: {goal}
             if lip < LIP_OVER_SOFT_MAX:
                 adjusted["lip_over_ratio"] = round(min(LIP_OVER_SOFT_MAX, lip + LIP_OVER_STEP), 2)
                 changes.append(f"オーバーリップをx{lip:.2f}→x{adjusted['lip_over_ratio']:.2f}へ拡張")
+            if blush_level < INTENSITY_MAX:
+                adjusted["blush_intensity"] = min(INTENSITY_MAX, blush_level + INTENSITY_STEP)
+                changes.append(f"チークの濃さを{blush_level:.0f}→{adjusted['blush_intensity']:.0f}へ")
+            if lip_level < INTENSITY_MAX:
+                adjusted["lip_intensity"] = min(INTENSITY_MAX, lip_level + INTENSITY_STEP)
+                changes.append(f"リップの濃さを{lip_level:.0f}→{adjusted['lip_intensity']:.0f}へ")
             if params.get("bangs_style") != "see_through":
                 adjusted["bangs_style"] = "see_through"
                 changes.append("前髪をシースルーバングへ変更")
@@ -214,6 +225,9 @@ Goal: {goal}
             if lip > 1.0:
                 adjusted["lip_over_ratio"] = round(max(1.0, lip - LIP_OVER_STEP), 2)
                 changes.append(f"オーバーリップをx{lip:.2f}→x{adjusted['lip_over_ratio']:.2f}へ抑制")
+            if blush_level > 0.0:
+                adjusted["blush_intensity"] = max(0.0, blush_level - INTENSITY_STEP)
+                changes.append(f"チークの濃さを{blush_level:.0f}→{adjusted['blush_intensity']:.0f}へ控えめに")
 
         return SafetyGuardrail.clamp_parameters(adjusted), changes
 

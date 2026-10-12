@@ -6,6 +6,7 @@ YouCam API の疎通確認スクリプト（Cloud Shell などキーを持つ環
   PYTHONPATH=. python scripts/youcam_smoke.py --bang-templates     # 前髪テンプレート一覧の表示（ユニット消費なし）
   PYTHONPATH=. python scripts/youcam_smoke.py path/to/selfie.jpg   # 顔分析 + メイク試着1回（約11ユニット消費）
   PYTHONPATH=. python scripts/youcam_smoke.py path/to/selfie.jpg --bangs see_through --bang-set male  # 前髪も試着（+1ユニット）
+  PYTHONPATH=. python scripts/youcam_smoke.py path/to/selfie.jpg --blush-intensity 80 --lip-intensity 75  # 濃さを変えて比較
 
 環境変数 YOUCAM_API_KEY（必須）、YOUCAM_BASE_URL（任意）を使用します。
 """
@@ -64,7 +65,8 @@ async def show_bang_templates() -> None:
         print(f"  id={t.get('id')}  title={t.get('title')}  category={t.get('category_name')}  thumb={t.get('thumb')}")
 
 
-async def run_smoke(image_path: str, bangs_style: str, bang_set: str) -> None:
+async def run_smoke(image_path: str, bangs_style: str, bang_set: str,
+                    blush_intensity: float, lip_intensity: float, under_eye: float) -> None:
     from app.config import settings
     from app.mcp.youcam_api import YouCamAPI
     from app.mcp.youcam_mapping import bang_template_for, plan_to_effects
@@ -77,8 +79,10 @@ async def run_smoke(image_path: str, bangs_style: str, bang_set: str) -> None:
     plan = {
         "blush_placement": "horizontal_low",
         "blush_color": "#FF8C7A",
+        "blush_intensity": blush_intensity,
         "lip_over_ratio": 1.15,
-        "eyeshadow_lower_intensity": 70.0,
+        "lip_intensity": lip_intensity,
+        "eyeshadow_lower_intensity": under_eye,
         "bangs_style": bangs_style,
     }
     template_id = bang_template_for(bangs_style, bang_set)
@@ -119,6 +123,9 @@ def main() -> None:
                         help="写真指定時に前髪も試着する")
     parser.add_argument("--bang-set", default="female", choices=["female", "male"],
                         help="前髪テンプレートの系統（レディース/メンズ）")
+    parser.add_argument("--blush-intensity", type=float, default=45.0, help="チークの濃さ（0〜90）")
+    parser.add_argument("--lip-intensity", type=float, default=45.0, help="リップの濃さ（0〜90）")
+    parser.add_argument("--under-eye", type=float, default=70.0, help="涙袋強調（0〜100）")
     args = parser.parse_args()
 
     if args.catalog:
@@ -126,7 +133,8 @@ def main() -> None:
     if args.bang_templates:
         asyncio.run(show_bang_templates())
     if args.image:
-        asyncio.run(run_smoke(args.image, args.bangs, args.bang_set))
+        asyncio.run(run_smoke(args.image, args.bangs, args.bang_set,
+                              args.blush_intensity, args.lip_intensity, args.under_eye))
     if not args.catalog and not args.bang_templates and not args.image:
         parser.print_help()
 
