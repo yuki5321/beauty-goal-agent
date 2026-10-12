@@ -8,17 +8,11 @@ from app.governance.guardrail import SafetyGuardrail
 from app.governance.memory_pipe import memory_pipe
 from app.observability.logger import agent_logger
 from app.mcp.client import youcam_client
+from app.agent import gemini
 from app.agent.evaluator import critic_agent, RATIO_TOLERANCE
+from app.agent.planner import styling_planner
 from app.agent.proportion import ProportionAnalyzer
 
-# Plan A: 最小介入の初期仮説（N-G02の趣旨に沿い、弱い錯視から段階的に強める）
-INITIAL_PLAN = {
-    "blush_placement": "horizontal_low",
-    "blush_color": "#FF8C7A",
-    "lip_over_ratio": 1.05,
-    "eyeshadow_lower_intensity": 30.0,
-    "bangs_style": "none"
-}
 DEFAULT_MID_RATIO = 0.355
 # 対話型Replanの結果は自律ループ(最大3回)の次の反復として表示する
 FEEDBACK_ITERATION = 4
@@ -92,8 +86,11 @@ class BeautyGoalOrchestrator:
         })
         await asyncio.sleep(0.4)
 
-        # 最小介入の初期仮説（Plan A）から開始し、Criticの評価に応じて段階的に強める
-        current_plan = SafetyGuardrail.clamp_parameters(dict(INITIAL_PLAN))
+        # 初期仮説（Plan A）の立案: Gemini Planner（未設定時は最小介入のルールベース）
+        decision = await styling_planner.plan_initial(goal, mid_ratio, ideal_ratio)
+        current_plan = decision.plan
+        plan_thought = decision.thought
+        plan_action = self._planner_action(decision.source, "plan_styling_parameters")
 
         # -------------------------------------------------------------
         # Step 2: ORIENT - Multi-Agent Council (3専門家合議によるGoalギャップ分析)
@@ -109,7 +106,7 @@ class BeautyGoalOrchestrator:
         await asyncio.sleep(0.4)
 
         initial_gov_safe, initial_gov_reason = SafetyGuardrail.inspect_tool_call("simulate_makeup", current_plan)
-        for debate in self._initial_council(mid_ratio, ideal_ratio, current_plan, initial_gov_safe, initial_gov_reason):
+        for debate in self._initial_council(mid_ratio, ideal_ratio, current_plan, plan_thought, initial_gov_safe, initial_gov_reason):
             yield self._sse_pack(debate)
             await asyncio.sleep(0.4)
 
@@ -136,8 +133,8 @@ class BeautyGoalOrchestrator:
                 "step_name": "DECIDE",
                 "iteration": iteration,
                 "title": f"スタイリング仮説の策定 (Plan {plan_label})",
-                "thought": f"探索反復 #{iteration}: 錯視パラメータを最適化 [チーク: {current_plan['blush_placement']}, オーバーリップ: x{current_plan['lip_over_ratio']}, 涙袋強調度: {current_plan['eyeshadow_lower_intensity']}%, 前髪: {current_plan['bangs_style']}]",
-                "action": "agent.plan_styling_parameters()",
+                "thought": f"探索反復 #{iteration}: {plan_thought} [チーク: {current_plan['blush_placement']}, オーバーリップ: x{current_plan['lip_over_ratio']}, 涙袋強調度: {current_plan['eyeshadow_lower_intensity']}%, 前髪: {current_plan['bangs_style']}]",
+                "action": plan_action,
                 "plan": current_plan
             })
             await asyncio.sleep(0.5)
@@ -166,7 +163,7 @@ class BeautyGoalOrchestrator:
                 "iteration": iteration,
                 "title": f"マルチモーダル自己評価 (Visual Critic)",
                 "thought": "生成された試着画像と元画像を比較し、Goal達成率（錯視効果指数）を自己評価中...",
-                "action": "gemini.critic_multimodal_evaluation()" if critic_agent.client else "critic.rule_based_proportion_model()"
+                "action": "gemini.critic_multimodal_evaluation()" if gemini.is_available() else "critic.rule_based_proportion_model()"
             })
             await asyncio.sleep(0.6)
 
@@ -226,7 +223,8 @@ class BeautyGoalOrchestrator:
                 })
                 break
 
-            next_plan = SafetyGuardrail.clamp_parameters({**current_plan, **recommended})
+            decision = await styling_planner.replan(goal, current_plan, score, critic_feedback, recommended)
+            next_plan = decision.plan
             changes = self._describe_plan_changes(current_plan, next_plan)
 
             # 調整余地なし or 最終ループ → サーキットブレーカー
@@ -265,13 +263,15 @@ class BeautyGoalOrchestrator:
                 "step_name": "REPLAN",
                 "iteration": iteration,
                 "title": f"自律再計画 (Replan) - Plan {next_label} 採択",
-                "thought": f"Criticの反省（{critic_feedback}）およびCouncil合議に基づき、パラメータを再調整して次ループへ移行します。",
-                "action": "agent.replan_styling_parameters()",
+                "thought": f"{decision.thought}（Council合議を経て次ループへ移行）",
+                "action": self._planner_action(decision.source, "replan_styling_parameters"),
                 "adjustments": next_plan
             })
             await asyncio.sleep(0.6)
 
             current_plan = next_plan
+            plan_thought = decision.thought
+            plan_action = self._planner_action(decision.source, "replan_styling_parameters")
 
         # -------------------------------------------------------------
         # Step: GROUNDING - Gemini Google Search Grounding
@@ -361,7 +361,11 @@ class BeautyGoalOrchestrator:
             if before.get(key) != after.get(key)
         ]
 
-    def _initial_council(self, mid_ratio: float, ideal_ratio: float, plan: Dict[str, Any], gov_safe: bool, gov_reason: str) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _planner_action(source: str, name: str) -> str:
+        return f"gemini.{name}()" if source == "gemini" else f"agent.rule_based_{name}()"
+
+    def _initial_council(self, mid_ratio: float, ideal_ratio: float, plan: Dict[str, Any], plan_thought: str, gov_safe: bool, gov_reason: str) -> List[Dict[str, Any]]:
         gap_px_note = f"{(mid_ratio - ideal_ratio) * 100:+.1f}pt"
         return [
             {
@@ -375,7 +379,7 @@ class BeautyGoalOrchestrator:
                 "type": "council_debate",
                 "speaker": "stylist",
                 "speaker_name": "💄 トレンドスタイリスト (Stylist Agent)",
-                "argument": f"いきなり全部盛りにすると不自然になります。まずは控えめなPlan A（{self._summarize_plan(plan)}）で効果を確認し、足りない分だけ強めましょう。",
+                "argument": f"{plan_thought} Plan A（{self._summarize_plan(plan)}）で効果を確認し、足りない分だけ強めましょう。",
                 "stance": "critique"
             },
             {
@@ -606,15 +610,14 @@ class BeautyGoalOrchestrator:
             }
         ]
 
-        if not settings.GEMINI_API_KEY:
+        client = gemini.get_client()
+        if client is None:
             return curated_recipes
 
         # Gemini 2.0 Flash + Google Search Grounding の呼び出しを試行
         try:
-            from google import genai
             from google.genai import types
 
-            client = genai.Client(api_key=settings.GEMINI_API_KEY)
             grounding_tool = types.Tool(google_search=types.GoogleSearch())
 
             candidates = " / ".join(
@@ -628,11 +631,9 @@ class BeautyGoalOrchestrator:
                 f"候補: {candidates}"
             )
 
-            loop = asyncio.get_event_loop()
-            res = await loop.run_in_executor(
-                None,
+            res = await asyncio.to_thread(
                 lambda: client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model=settings.GEMINI_MODEL,
                     contents=search_prompt,
                     config=types.GenerateContentConfig(
                         tools=[grounding_tool],
@@ -748,53 +749,10 @@ class BeautyGoalOrchestrator:
         })
         await asyncio.sleep(0.3)
 
-        # ルールベースでパラメータを調整（安全リミット内に補正）
-        adjusted_plan = {**INITIAL_PLAN, **SafetyGuardrail.clamp_parameters(current_plan)}
-        thought_msg = ""
-
-        # キーワード解析 & 柔軟なパラメータ反映
-        fb_lower = user_feedback.lower()
-        if "前髪" in user_feedback or "額" in user_feedback or "bangs" in fb_lower:
-            if "なし" in user_feedback or "なく" in user_feedback or "センター" in user_feedback:
-                adjusted_plan["bangs_style"] = "none"
-                thought_msg += "前髪をなしに設定。"
-            elif "ストレート" in user_feedback or "重め" in user_feedback:
-                adjusted_plan["bangs_style"] = "full_straight"
-                thought_msg += "前髪をフルバングに変更。"
-            else:
-                adjusted_plan["bangs_style"] = "see_through"
-                thought_msg += "前髪をシースルーバングに設定。"
-
-        if "リップ" in user_feedback or "唇" in user_feedback or "lip" in fb_lower:
-            if "落ち着" in user_feedback or "薄" in user_feedback or "ナチュラル" in user_feedback:
-                adjusted_plan["lip_over_ratio"] = 1.08
-                thought_msg += "リップのオーバー幅をナチュラルに微調整。"
-            elif "濃" in user_feedback or "ぷっくり" in user_feedback or "強調" in user_feedback:
-                adjusted_plan["lip_over_ratio"] = 1.25
-                thought_msg += "リップのオーバー幅とハイライトを強調。"
-
-        if "チーク" in user_feedback or "頬" in user_feedback or "blush" in fb_lower:
-            if "薄" in user_feedback or "ナチュラル" in user_feedback:
-                adjusted_plan["blush_color"] = "#FFA896"
-                thought_msg += "チークを淡いソフトトーンへシフト。"
-            elif "大人" in user_feedback or "上" in user_feedback:
-                adjusted_plan["blush_placement"] = "apple_high"
-                thought_msg += "チークをやや高い位置へシフト。"
-            else:
-                adjusted_plan["blush_placement"] = "horizontal_low"
-                thought_msg += "小鼻下の横長チークを維持。"
-
-        if "涙袋" in user_feedback or "目" in user_feedback or "eye" in fb_lower:
-            if "控えめ" in user_feedback or "薄" in user_feedback:
-                adjusted_plan["eyeshadow_lower_intensity"] = 40.0
-                thought_msg += "涙袋のラメ・影を控えめに調整。"
-            else:
-                adjusted_plan["eyeshadow_lower_intensity"] = 90.0
-                thought_msg += "涙袋の影とパールをさらに強調。"
-
-        if not thought_msg:
-            thought_msg = "要望に対応するパラメータを特定できなかったため、現在のプランを維持しました。"
-        adjusted_plan = SafetyGuardrail.clamp_parameters(adjusted_plan)
+        # 要望の解釈: Gemini Planner（未設定時はキーワード規則）。出力は安全リミット内に補正済み
+        decision = await styling_planner.interpret_feedback(goal, current_plan, user_feedback)
+        adjusted_plan = decision.plan
+        thought_msg = decision.thought
 
         # Step: DECIDE_FEEDBACK
         yield self._sse_pack({
@@ -802,7 +760,7 @@ class BeautyGoalOrchestrator:
             "step_name": "DECIDE",
             "title": "カスタムプランの策定 (Custom Plan)",
             "thought": f"フィードバック反映: {thought_msg} [チーク: {adjusted_plan.get('blush_placement')}, リップ: x{adjusted_plan.get('lip_over_ratio')}, 涙袋: {adjusted_plan.get('eyeshadow_lower_intensity')}%, 前髪: {adjusted_plan.get('bangs_style')}]",
-            "action": "gemini.plan_custom_interactive_parameters()",
+            "action": self._planner_action(decision.source, "plan_custom_interactive_parameters"),
             "plan": adjusted_plan
         })
         await asyncio.sleep(0.5)

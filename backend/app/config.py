@@ -6,6 +6,7 @@ load_dotenv()
 
 class Settings(BaseModel):
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     YOUCAM_API_KEY: str = os.getenv("YOUCAM_API_KEY", "")
     YOUCAM_BASE_URL: str = os.getenv("YOUCAM_BASE_URL", "https://api.perfectcorp.com/v1")
     USE_MOCK_YOUCAM: bool = os.getenv("USE_MOCK_YOUCAM", "false").lower() in ("true", "1", "yes")

@@ -125,7 +125,7 @@ def _run_loop_events(ratio, monkeypatch):
     from PIL import Image
     from app.agent.orchestrator import agent_orchestrator
     from app.mcp.client import youcam_client
-    from app.agent.evaluator import critic_agent
+    from app.agent import gemini
 
     async def fake_analyze(_bytes):
         return {"proportions": {"mid_face_ratio": ratio}}
@@ -134,7 +134,7 @@ def _run_loop_events(ratio, monkeypatch):
         return None
 
     monkeypatch.setattr(youcam_client, "analyze_face", fake_analyze)
-    monkeypatch.setattr(critic_agent, "client", None)
+    monkeypatch.setattr(gemini, "get_client", lambda: None)
     monkeypatch.setattr("app.agent.orchestrator.asyncio.sleep", no_sleep)
 
     buf = io.BytesIO()
@@ -189,3 +189,118 @@ def test_grounding_marks_only_products_found_in_search_answer():
     BeautyGoalOrchestrator._apply_grounding_result(recipes, res)
     flags = [p["grounding_verified"] for p in recipes[0]["recommended_products"]]
     assert flags == [True, False]
+
+
+# ---- Gemini Planner (generate_json をモックしてキー無しで検証) ----
+
+def _fake_gemini(monkeypatch, responses):
+    """gemini.generate_json を、system_instruction ごとの応答で置き換える"""
+    from app.agent import gemini
+    from app.agent import prompts
+
+    calls = []
+
+    async def fake_generate_json(system_instruction, contents, temperature=0.3):
+        calls.append(system_instruction)
+        for key, value in responses.items():
+            if system_instruction == getattr(prompts, key):
+                return value
+        return None
+
+    monkeypatch.setattr(gemini, "get_client", lambda: object())
+    monkeypatch.setattr(gemini, "generate_json", fake_generate_json)
+    return calls
+
+def test_planner_normalizes_llm_output():
+    from app.agent.planner import _normalize_plan, INITIAL_PLAN
+
+    raw = {
+        "blush_placement": "under_eye_extreme",   # 不正なenum → base
+        "blush_color": "red",                     # 不正な色 → base
+        "lip_over_ratio": 1.6,                    # 上限1.3へ補正
+        "eyeshadow_lower_intensity": "80",
+        "bangs_style": "curtain",
+        "jaw_slimming": 0.8,                      # 未知キーは除去
+    }
+    plan = _normalize_plan(raw, INITIAL_PLAN)
+    assert plan == {
+        "blush_placement": "horizontal_low",
+        "blush_color": "#FF8C7A",
+        "lip_over_ratio": 1.3,
+        "eyeshadow_lower_intensity": 80.0,
+        "bangs_style": "curtain",
+    }
+    assert _normalize_plan("not json", INITIAL_PLAN) is None
+
+def test_planner_falls_back_to_rules_when_gemini_fails(monkeypatch):
+    import asyncio
+    from app.agent.planner import styling_planner, INITIAL_PLAN
+
+    _fake_gemini(monkeypatch, {})  # すべての呼び出しで None
+
+    initial = asyncio.run(styling_planner.plan_initial("midface_shortening", 0.357, 0.31))
+    assert initial.source == "rule" and initial.plan == INITIAL_PLAN
+
+    proposal = {"eyeshadow_lower_intensity": 55.0}
+    replanned = asyncio.run(styling_planner.replan("midface_shortening", INITIAL_PLAN, 83, "fb", proposal))
+    assert replanned.source == "rule" and replanned.plan["eyeshadow_lower_intensity"] == 55.0
+
+    fb = asyncio.run(styling_planner.interpret_feedback("midface_shortening", INITIAL_PLAN, "前髪なしで"))
+    assert fb.source == "rule" and fb.plan["bangs_style"] == "none"
+
+def test_planner_replan_ignores_no_op_llm_output(monkeypatch):
+    import asyncio
+    from app.agent.planner import styling_planner, INITIAL_PLAN
+
+    _fake_gemini(monkeypatch, {"REPLAN_SYSTEM_INSTRUCTION": {"adjusted_parameters": dict(INITIAL_PLAN)}})
+    decision = asyncio.run(styling_planner.replan(
+        "midface_shortening", INITIAL_PLAN, 83, "fb", {"eyeshadow_lower_intensity": 55.0}))
+    # LLMが前回と同じプランを返したらCritic提案で前進する
+    assert decision.source == "rule" and decision.plan["eyeshadow_lower_intensity"] == 55.0
+
+def test_planner_replaces_lookist_llm_thought(monkeypatch):
+    import asyncio
+    from app.agent.planner import styling_planner, NEUTRAL_THOUGHT
+
+    _fake_gemini(monkeypatch, {"PLANNER_SYSTEM_INSTRUCTION": {
+        "thought_process": "顔の欠点を隠すためにチークを入れます。",
+        "proposed_plan": {"lip_over_ratio": 1.1},
+    }})
+    decision = asyncio.run(styling_planner.plan_initial("midface_shortening", 0.357, 0.31))
+    assert decision.source == "gemini"
+    assert decision.thought == NEUTRAL_THOUGHT
+    assert decision.plan["lip_over_ratio"] == 1.1
+
+def test_feedback_replan_uses_gemini_interpretation(monkeypatch):
+    import asyncio, io, json
+    from PIL import Image
+    from app.agent.orchestrator import agent_orchestrator
+
+    async def no_sleep(_s):
+        return None
+    monkeypatch.setattr("app.agent.orchestrator.asyncio.sleep", no_sleep)
+    calls = _fake_gemini(monkeypatch, {"INTERACTIVE_FEEDBACK_INSTRUCTION": {
+        "feedback_reflection": "大人っぽさを優先し、チークを斜めに入れて血色感を控えめにしました。",
+        "adjusted_parameters": {"blush_placement": "diagonal_temple", "blush_color": "#C8786E", "lip_over_ratio": 1.05},
+    }})
+
+    buf = io.BytesIO()
+    Image.new("RGB", (120, 120), (250, 220, 200)).save(buf, format="JPEG")
+    plan = {"blush_placement": "horizontal_low", "blush_color": "#FF8C7A",
+            "lip_over_ratio": 1.10, "eyeshadow_lower_intensity": 55.0, "bangs_style": "see_through"}
+
+    async def collect():
+        return [json.loads(e[len("data: "):]) async for e in agent_orchestrator.run_feedback_replan(
+            session_id="session_fb_gemini", goal="midface_shortening", current_plan=plan,
+            user_feedback="もう少し大人っぽい雰囲気にしたい", fallback_image_bytes=buf.getvalue())]
+    events = asyncio.run(collect())
+
+    from app.agent import prompts
+    assert prompts.INTERACTIVE_FEEDBACK_INSTRUCTION in calls
+    decide = next(e for e in events if e.get("step_name") == "DECIDE")
+    assert decide["action"] == "gemini.plan_custom_interactive_parameters()"
+    assert "大人っぽさ" in decide["thought"]
+    final = next(e for e in events if e["type"] == "final_result")
+    assert final["plan"]["blush_placement"] == "diagonal_temple"
+    assert final["plan"]["blush_color"] == "#C8786E"
+    assert final["plan"]["eyeshadow_lower_intensity"] == 55.0  # 指定外のキーは現状維持
