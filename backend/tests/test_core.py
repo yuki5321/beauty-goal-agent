@@ -158,6 +158,7 @@ def test_circuit_breaker_reported_in_audit(monkeypatch):
     assert "circuit_breaker" in types and "converged" not in types
     final = next(e for e in events if e["type"] == "final_result")
     assert final["audit_certificate"]["agent_circuit_breaker"]["exit_status"].startswith("CIRCUIT_BREAKER")
+    assert final["bangs_rendered"] is True  # シミュレータ経路は前髪も描画
     # 全プランが安全リミット内
     for e in events:
         if e["type"] == "evaluation_result":

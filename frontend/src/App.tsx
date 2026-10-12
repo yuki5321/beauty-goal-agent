@@ -30,6 +30,7 @@ export function App() {
   const [auditCert, setAuditCert] = useState<GovernanceAuditCertificate | null>(null);
   const [ratioAnalysis, setRatioAnalysis] = useState<RatioAnalysis | null>(null);
   const [finalPlan, setFinalPlan] = useState<StylingPlan | null>(null);
+  const [bangsRendered, setBangsRendered] = useState<boolean>(true);
   const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -219,6 +220,7 @@ export function App() {
               }
               setRatioAnalysis(eventData.ratio_analysis ?? null);
               setFinalPlan(eventData.plan ?? null);
+              setBangsRendered(eventData.bangs_rendered ?? true);
               if (eventData.final_score !== undefined) {
                 setCurrentScore(eventData.final_score);
               }
@@ -355,6 +357,7 @@ export function App() {
                 isGoalMet={isConverged && currentScore >= 85}
                 ratioAnalysis={ratioAnalysis}
                 plan={finalPlan}
+                bangsRendered={bangsRendered}
               />
             ) : (
               <div className="h-[520px] rounded-2xl border border-slate-800/80 bg-slate-900/30 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-3">

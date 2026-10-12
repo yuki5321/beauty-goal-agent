@@ -95,6 +95,7 @@ export interface AgentStepEvent {
   final_score?: number;
   simulated_image?: string;
   ratio_analysis?: RatioAnalysis;
+  bangs_rendered?: boolean;
   recipe?: MakeupRecipeItem[];
   audit_certificate?: GovernanceAuditCertificate;
   governance_status?: {
