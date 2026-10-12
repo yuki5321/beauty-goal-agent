@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, Tuple
 from app.config import settings
 from app.mcp.simulator import YouCamVirtualTryOnSimulator
 from app.mcp.youcam_api import YouCamAPI, YouCamError
-from app.mcp.youcam_mapping import bang_template_for
+from app.mcp.youcam_mapping import DEFAULT_BANG_SET, bang_template_for
 from app.observability.logger import agent_logger
 
 
@@ -51,12 +51,14 @@ class YouCamMCPClient:
                 return result
         return YouCamVirtualTryOnSimulator.analyze_face(image_bytes)
 
-    async def simulate_makeup_and_hair(self, image_bytes: bytes, plan: Dict[str, Any]) -> TryOnResult:
+    async def simulate_makeup_and_hair(
+        self, image_bytes: bytes, plan: Dict[str, Any], bang_set: str = DEFAULT_BANG_SET
+    ) -> TryOnResult:
         """前髪・チーク・リップ・涙袋の試着画像を生成"""
         bangs_style = plan.get("bangs_style", "none")
         fallback_reason = None
         if not self.use_mock:
-            bangs_url, bangs_rendered, bangs_reason = await self._try_bangs(image_bytes, bangs_style)
+            bangs_url, bangs_rendered, bangs_reason = await self._try_bangs(image_bytes, bangs_style, bang_set)
             try:
                 image = await self.api.apply_makeup(image_bytes, plan, src_url=bangs_url)
                 return TryOnResult(image, "youcam", bangs_rendered=bangs_rendered,
@@ -75,11 +77,13 @@ class YouCamMCPClient:
         )
         return TryOnResult(image, "simulator", fallback_reason=fallback_reason, bangs_style=bangs_style)
 
-    async def _try_bangs(self, image_bytes: bytes, bangs_style: str) -> Tuple[Optional[str], bool, Optional[str]]:
+    async def _try_bangs(
+        self, image_bytes: bytes, bangs_style: str, bang_set: str = DEFAULT_BANG_SET
+    ) -> Tuple[Optional[str], bool, Optional[str]]:
         """前髪試着。戻り値: (結果URL, 前髪が指定どおり画像に反映されたか, 未反映の理由)"""
         if bangs_style == "none":
             return None, True, None
-        template_id = bang_template_for(bangs_style)
+        template_id = bang_template_for(bangs_style, bang_set)
         if not template_id:
             return None, False, "template_not_configured"
         try:

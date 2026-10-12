@@ -365,11 +365,11 @@ def test_youcam_makeup_flow_returns_result_image():
     calls = []
     client = _youcam_client(_youcam_transport({"makeup-vto": {"url": "https://result.example.com/r.jpg"}}, calls))
     plan = {"blush_placement": "horizontal_low", "blush_color": "#FF8C7A", "lip_over_ratio": 1.1,
-            "eyeshadow_lower_intensity": 55.0, "bangs_style": "see_through"}
+            "eyeshadow_lower_intensity": 55.0, "bangs_style": "none"}
 
     result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), plan))
     assert result.source == "youcam" and result.image_bytes == b"RESULT-IMAGE"
-    assert result.bangs_rendered is False and result.fallback_reason is None
+    assert result.bangs_rendered is True and result.fallback_reason is None
     methods = [m for m, _ in calls]
     assert methods[:3] == ["POST", "PUT", "POST"] and methods.count("GET") >= 2
 
@@ -503,7 +503,8 @@ def test_youcam_bangs_failure_continues_with_makeup_only(monkeypatch):
 
 def test_youcam_bangs_none_and_unconfigured(monkeypatch):
     import asyncio
-    monkeypatch.delenv("YOUCAM_BANG_TEMPLATES", raising=False)
+    # 既定テンプレートを環境変数で空にして「未設定」を再現
+    monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", '{"see_through": "", "curtain": "", "full_straight": ""}')
     calls = []
     client = _youcam_client(_bang_transport(calls))
 
@@ -515,13 +516,38 @@ def test_youcam_bangs_none_and_unconfigured(monkeypatch):
     assert unconfigured.bangs_fallback_reason == "template_not_configured"
     assert "hair-bang" not in [name for name, _ in calls]
 
+def test_bang_template_defaults_and_sets(monkeypatch):
+    from app.mcp.youcam_mapping import bang_template_for
+    monkeypatch.delenv("YOUCAM_BANG_TEMPLATES", raising=False)
+    assert bang_template_for("see_through", "male") == "male_wispy_bangs"
+    assert bang_template_for("curtain") == "female_split_bangs"
+    assert bang_template_for("full_straight", "female") == "female_blunt_bangs"
+    assert bang_template_for("see_through", "unknown") == "female_wispy_bangs"  # 未知の系統はレディース
+    assert bang_template_for("none", "male") is None
+
 def test_bang_template_env_override(monkeypatch):
     from app.mcp.youcam_mapping import bang_template_for
+    # 1段構造は両系統に適用
     monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", '{"curtain": "tpl-curtain"}')
     assert bang_template_for("curtain") == "tpl-curtain"
-    assert bang_template_for("none") is None
+    assert bang_template_for("curtain", "male") == "tpl-curtain"
+    # 2段構造は指定系統のみ
+    monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", '{"male": {"see_through": "tpl-male"}}')
+    assert bang_template_for("see_through", "male") == "tpl-male"
+    assert bang_template_for("see_through", "female") == "female_wispy_bangs"
+    # 不正なJSONは無視して既定値
     monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", "not-json")
-    assert bang_template_for("curtain") is None  # 不正なJSONは無視（既定値は未設定）
+    assert bang_template_for("curtain") == "female_split_bangs"
+
+def test_youcam_bangs_uses_selected_bang_set(monkeypatch):
+    import asyncio
+    monkeypatch.delenv("YOUCAM_BANG_TEMPLATES", raising=False)
+    calls = []
+    client = _youcam_client(_bang_transport(calls))
+    result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), _BANG_PLAN, bang_set="male"))
+    assert result.bangs_rendered is True
+    bang_body = next(body for name, body in calls if name == "hair-bang")
+    assert bang_body["template_id"] == "male_wispy_bangs"
 
 def test_act_observation_reports_bangs_outcome():
     from app.agent.orchestrator import BeautyGoalOrchestrator

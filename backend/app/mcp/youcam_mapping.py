@@ -23,13 +23,23 @@ LIP_LINER_OVER_UPPER = "LargerUpper1"
 LIP_SHAPE = "original"  # 唇の形を変える plump 等や morphology は N-G02 に従い使わない
 HIGHLIGHTER_PATTERN = "SquareFace3"
 
-# 前髪スタイル → YouCam hair-bang テンプレートID。
+# 前髪スタイル → YouCam hair-bang テンプレートID（系統は利用者が画面で選択。写真から推定しない）。
 # 一覧は backend/scripts/youcam_smoke.py --bang-templates で確認できる。
-# 環境変数 YOUCAM_BANG_TEMPLATES（JSON, 例: {"see_through": "xxx"}）で上書き可能。
-BANG_TEMPLATES: Dict[str, str] = {
-    "see_through": "",
-    "curtain": "",
-    "full_straight": "",
+# 環境変数 YOUCAM_BANG_TEMPLATES（JSON）で上書き可能:
+#   {"male": {"see_through": "xxx"}} → その系統のみ / {"see_through": "xxx"} → 両系統
+BANG_SETS = ("female", "male")
+DEFAULT_BANG_SET = "female"
+BANG_TEMPLATES: Dict[str, Dict[str, str]] = {
+    "female": {
+        "see_through": "female_wispy_bangs",
+        "curtain": "female_split_bangs",
+        "full_straight": "female_blunt_bangs",
+    },
+    "male": {
+        "see_through": "male_wispy_bangs",
+        "curtain": "male_split_bangs",
+        "full_straight": "male_blunt_bangs",
+    },
 }
 
 LIP_COLOR = "#D9737A"
@@ -96,15 +106,23 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
     return effects
 
 
-def bang_template_for(style: str) -> Optional[str]:
-    """前髪スタイルに対応するテンプレートID。none・未設定は None"""
+def normalize_bang_set(bang_set: Optional[str]) -> str:
+    return bang_set if bang_set in BANG_SETS else DEFAULT_BANG_SET
+
+
+def bang_template_for(style: str, bang_set: str = DEFAULT_BANG_SET) -> Optional[str]:
+    """前髪スタイル・系統に対応するテンプレートID。none・未設定は None"""
     if not style or style == "none":
         return None
-    templates = dict(BANG_TEMPLATES)
+    bang_set = normalize_bang_set(bang_set)
+    templates = dict(BANG_TEMPLATES[bang_set])
     override = os.getenv("YOUCAM_BANG_TEMPLATES", "")
     if override:
         try:
-            templates.update({k: str(v) for k, v in json.loads(override).items()})
+            parsed = json.loads(override)
+            if isinstance(parsed.get(bang_set), dict):
+                templates.update({k: str(v) for k, v in parsed[bang_set].items()})
+            templates.update({k: str(v) for k, v in parsed.items() if not isinstance(v, dict)})
         except (ValueError, AttributeError):
             pass
     return templates.get(style) or None
