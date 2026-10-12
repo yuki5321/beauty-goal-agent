@@ -9,7 +9,7 @@ import asyncio
 import hashlib
 import io
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 from PIL import Image
 from app.mcp.youcam_mapping import plan_to_effects
@@ -52,6 +52,8 @@ class YouCamAPI:
         # 画像ハッシュ → (値, 保存時刻)。N-G03: TTLで破棄し、purge()で即時破棄できる
         self._file_ids: Dict[str, Tuple[str, float]] = {}
         self._face_results: Dict[str, Tuple[Dict[str, Any], float]] = {}
+        # (画像ハッシュ, template_id) → 前髪試着結果URL（URL自体は2時間有効）
+        self._bang_urls: Dict[str, Tuple[str, float]] = {}
 
     # ---------- public ----------
 
@@ -87,13 +89,34 @@ class YouCamAPI:
         self._face_results[key] = (analysis, time.time())
         return analysis
 
-    async def apply_makeup(self, image_bytes: bytes, plan: Dict[str, Any]) -> bytes:
+    async def apply_bangs(self, image_bytes: bytes, template_id: str) -> str:
+        """前髪を試着し、結果画像のURLを返す（メイク試着の src_file_url にそのまま使える）"""
         jpeg = prepare_image(image_bytes)
         key = self._hash(jpeg)
+        cache_key = f"{key}:{template_id}"
+        cached = self._get_cached(self._bang_urls, cache_key)
+        if cached is not None:
+            return cached
+
         async with self._client() as client:
             file_id = await self._upload(client, jpeg, key)
+            results = await self._run_task(client, "hair-bang", {"src_file_id": file_id, "template_id": template_id})
+        url = results.get("url")
+        if not url:
+            raise YouCamError("invalid_response", "results.url missing")
+        self._bang_urls[cache_key] = (url, time.time())
+        return url
+
+    async def apply_makeup(self, image_bytes: bytes, plan: Dict[str, Any], src_url: Optional[str] = None) -> bytes:
+        """メイク試着。src_url（前髪試着結果など）があればアップロードせずそれを入力にする"""
+        async with self._client() as client:
+            if src_url:
+                source = {"src_file_url": src_url}
+            else:
+                jpeg = prepare_image(image_bytes)
+                source = {"src_file_id": await self._upload(client, jpeg, self._hash(jpeg))}
             results = await self._run_task(client, "makeup-vto", {
-                "src_file_id": file_id,
+                **source,
                 "version": "1.0",
                 "effects": plan_to_effects(plan),
             })
@@ -113,10 +136,30 @@ class YouCamAPI:
             return
         self._file_ids.pop(key, None)
         self._face_results.pop(key, None)
+        for k in [k for k in self._bang_urls if k.startswith(f"{key}:")]:
+            del self._bang_urls[k]
 
     def purge(self) -> None:
         self._file_ids.clear()
         self._face_results.clear()
+        self._bang_urls.clear()
+
+    async def list_bang_templates(self, max_pages: int = 10) -> List[Dict[str, Any]]:
+        """前髪テンプレート一覧（確認用スクリプト向け）"""
+        templates: List[Dict[str, Any]] = []
+        token: Optional[str] = None
+        async with self._client() as client:
+            for _ in range(max_pages):
+                params: Dict[str, Any] = {"page_size": 20}
+                if token:
+                    params["starting_token"] = token
+                res = await client.get(f"{self.base_url}/s2s/v2.0/task/template/hair-bang", headers=self._auth(), params=params)
+                data = self._json_or_raise(res).get("data") or {}
+                templates.extend(data.get("templates") or [])
+                token = data.get("next_token")
+                if not token:
+                    break
+        return templates
 
     # ---------- internals ----------
 
