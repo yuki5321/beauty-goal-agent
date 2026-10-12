@@ -13,6 +13,8 @@ import { Play, RotateCcw, Sparkles, ShieldAlert, ShieldCheck } from "lucide-reac
 export function App() {
   const [selectedGoal, setSelectedGoal] = useState<string>("midface_shortening");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // 前髪試着テンプレートの系統（写真から推定せず利用者が選ぶ）
+  const [bangSet, setBangSet] = useState<"female" | "male">("female");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // エージェント実行ステート
@@ -101,6 +103,7 @@ export function App() {
 
     const formData = new FormData();
     formData.append("goal", selectedGoal);
+    formData.append("bang_set", bangSet);
     formData.append("image", selectedFile);
 
     try {
@@ -136,6 +139,7 @@ export function App() {
     const formData = new FormData();
     formData.append("session_id", sessionId || "session_default");
     formData.append("goal", selectedGoal);
+    formData.append("bang_set", bangSet);
     formData.append("current_plan_json", JSON.stringify(currentPlan));
     formData.append("user_feedback", userFeedback);
     if (selectedFile) {
@@ -272,6 +276,38 @@ export function App() {
               disabled={isRunning}
               sendsToExternalApi={sendsToExternalApi}
             />
+
+            {/* 前髪スタイルの系統選択 */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-300">前髪スタイル</span>
+                <div className="inline-flex rounded-lg border border-slate-700 bg-slate-900/80 p-0.5" role="radiogroup" aria-label="前髪スタイル">
+                  {([
+                    { id: "female", label: "レディース" },
+                    { id: "male", label: "メンズ" },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={bangSet === option.id}
+                      disabled={isRunning}
+                      onClick={() => setBangSet(option.id)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                        bangSet === option.id
+                          ? "bg-pink-500/20 text-pink-300 border border-pink-500/40"
+                          : "text-slate-400 hover:text-slate-200 border border-transparent"
+                      } ${isRunning ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                前髪の試着テンプレートの系統を選んでください（写真から自動判定はしません）。
+              </p>
+            </div>
           </div>
 
           <div className="lg:col-span-7 flex flex-col justify-between space-y-5">

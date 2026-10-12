@@ -8,6 +8,7 @@ from app.governance.guardrail import SafetyGuardrail
 from app.governance.memory_pipe import memory_pipe
 from app.observability.logger import agent_logger
 from app.mcp.client import TryOnResult, youcam_client
+from app.mcp.youcam_mapping import DEFAULT_BANG_SET
 from app.agent import gemini
 from app.agent.evaluator import critic_agent, RATIO_TOLERANCE
 from app.agent.planner import styling_planner
@@ -27,7 +28,8 @@ class BeautyGoalOrchestrator:
         self,
         session_id: str,
         goal: str,
-        image_bytes: bytes
+        image_bytes: bytes,
+        bang_set: str = DEFAULT_BANG_SET
     ) -> AsyncGenerator[str, None]:
         """
         SSE形式で推論ステップをフロントエンドに逐次配信するジェネレータ
@@ -149,7 +151,7 @@ class BeautyGoalOrchestrator:
 
             # Step 4: ACT (YouCam API 試着)
             yield self._act_step(iteration)
-            tryon = await youcam_client.simulate_makeup_and_hair(image_bytes, current_plan)
+            tryon = await youcam_client.simulate_makeup_and_hair(image_bytes, current_plan, bang_set=bang_set)
             act_note = self._act_observation(tryon)
             if act_note:
                 yield self._sse_pack(act_note)
@@ -719,7 +721,8 @@ class BeautyGoalOrchestrator:
         goal: str,
         current_plan: Dict[str, Any],
         user_feedback: str,
-        fallback_image_bytes: bytes = None
+        fallback_image_bytes: bytes = None,
+        bang_set: str = DEFAULT_BANG_SET
     ) -> AsyncGenerator[str, None]:
         """
         ユーザーからの自然言語フィードバック（追加要望）を反映した対話型再計画（Human-in-the-Loop Replan）
@@ -812,7 +815,7 @@ class BeautyGoalOrchestrator:
 
         # Step: ACT (YouCam API 試着)
         yield self._act_step(title="微調整シミュレーション実行")
-        tryon = await youcam_client.simulate_makeup_and_hair(image_bytes, adjusted_plan)
+        tryon = await youcam_client.simulate_makeup_and_hair(image_bytes, adjusted_plan, bang_set=bang_set)
         act_note = self._act_observation(tryon)
         if act_note:
             yield self._sse_pack(act_note)

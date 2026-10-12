@@ -12,6 +12,7 @@ from app.config import settings
 from app.agent.orchestrator import agent_orchestrator
 from app.governance.memory_pipe import memory_pipe
 from app.mcp.client import youcam_client
+from app.mcp.youcam_mapping import DEFAULT_BANG_SET, normalize_bang_set
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,7 +52,8 @@ async def health_check():
 @app.post("/api/agent/optimize")
 async def optimize_beauty_goal(
     goal: str = Form("midface_shortening"),
-    image: UploadFile = File(...)
+    image: UploadFile = File(...),
+    bang_set: str = Form(DEFAULT_BANG_SET)
 ):
     """
     顔画像と目標（Goal）を受け取り、OODA試行錯誤ループをSSE形式でリアルタイム配信する。
@@ -67,7 +69,8 @@ async def optimize_beauty_goal(
     event_generator = agent_orchestrator.run_optimization_loop(
         session_id=session_id,
         goal=goal,
-        image_bytes=image_bytes
+        image_bytes=image_bytes,
+        bang_set=normalize_bang_set(bang_set)
     )
 
     return StreamingResponse(
@@ -86,7 +89,8 @@ async def feedback_replan_endpoint(
     goal: str = Form("midface_shortening"),
     current_plan_json: str = Form(...),
     user_feedback: str = Form(...),
-    image: UploadFile = File(None)
+    image: UploadFile = File(None),
+    bang_set: str = Form(DEFAULT_BANG_SET)
 ):
     """
     ユーザーからの自然言語追加フィードバックを受け取り、協調型Replan（Human-in-the-Loop）を実行するSSEエンドポイント
@@ -106,7 +110,8 @@ async def feedback_replan_endpoint(
         goal=goal,
         current_plan=current_plan,
         user_feedback=user_feedback,
-        fallback_image_bytes=fallback_bytes
+        fallback_image_bytes=fallback_bytes,
+        bang_set=normalize_bang_set(bang_set)
     )
 
     return StreamingResponse(

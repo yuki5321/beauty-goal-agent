@@ -5,7 +5,7 @@ YouCam API の疎通確認スクリプト（Cloud Shell などキーを持つ環
   PYTHONPATH=. python scripts/youcam_smoke.py --catalog            # パターン一覧の表示のみ（ユニット消費なし）
   PYTHONPATH=. python scripts/youcam_smoke.py --bang-templates     # 前髪テンプレート一覧の表示（ユニット消費なし）
   PYTHONPATH=. python scripts/youcam_smoke.py path/to/selfie.jpg   # 顔分析 + メイク試着1回（約11ユニット消費）
-  PYTHONPATH=. python scripts/youcam_smoke.py path/to/selfie.jpg --bangs see_through  # 前髪も試着（+1ユニット）
+  PYTHONPATH=. python scripts/youcam_smoke.py path/to/selfie.jpg --bangs see_through --bang-set male  # 前髪も試着（+1ユニット）
 
 環境変数 YOUCAM_API_KEY（必須）、YOUCAM_BASE_URL（任意）を使用します。
 """
@@ -64,7 +64,7 @@ async def show_bang_templates() -> None:
         print(f"  id={t.get('id')}  title={t.get('title')}  category={t.get('category_name')}  thumb={t.get('thumb')}")
 
 
-async def run_smoke(image_path: str, bangs_style: str) -> None:
+async def run_smoke(image_path: str, bangs_style: str, bang_set: str) -> None:
     from app.config import settings
     from app.mcp.youcam_api import YouCamAPI
     from app.mcp.youcam_mapping import bang_template_for, plan_to_effects
@@ -81,7 +81,7 @@ async def run_smoke(image_path: str, bangs_style: str) -> None:
         "eyeshadow_lower_intensity": 70.0,
         "bangs_style": bangs_style,
     }
-    template_id = bang_template_for(bangs_style)
+    template_id = bang_template_for(bangs_style, bang_set)
     if bangs_style != "none" and not template_id:
         sys.exit(f"前髪 '{bangs_style}' のテンプレートIDが未設定です（YOUCAM_BANG_TEMPLATES を設定してください）。")
     units = 11 + (1 if template_id else 0)
@@ -116,7 +116,9 @@ def main() -> None:
     parser.add_argument("--catalog", action="store_true", help="パターンカタログのラベル一覧を表示")
     parser.add_argument("--bang-templates", action="store_true", help="前髪テンプレート一覧を表示")
     parser.add_argument("--bangs", default="none", choices=["none", "see_through", "curtain", "full_straight"],
-                        help="写真指定時に前髪も試着する（テンプレートID設定が必要）")
+                        help="写真指定時に前髪も試着する")
+    parser.add_argument("--bang-set", default="female", choices=["female", "male"],
+                        help="前髪テンプレートの系統（レディース/メンズ）")
     args = parser.parse_args()
 
     if args.catalog:
@@ -124,7 +126,7 @@ def main() -> None:
     if args.bang_templates:
         asyncio.run(show_bang_templates())
     if args.image:
-        asyncio.run(run_smoke(args.image, args.bangs))
+        asyncio.run(run_smoke(args.image, args.bangs, args.bang_set))
     if not args.catalog and not args.bang_templates and not args.image:
         parser.print_help()
 
