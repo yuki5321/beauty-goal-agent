@@ -24,10 +24,12 @@ CATALOGS = {
 
 
 def _labels(node):
-    """カタログJSONから label を再帰的に集める（構造に依存しない）"""
+    """カタログJSONから label（形状タグがあれば併記）を再帰的に集める"""
     if isinstance(node, dict):
         if "label" in node:
-            yield node["label"]
+            tags = [t.get("name") for t in node.get("tags") or [] if isinstance(t, dict)]
+            shape = [t for t in tags if t and "3D" not in t]
+            yield f"{node['label']}({'/'.join(shape)})" if shape else node["label"]
         for value in node.values():
             yield from _labels(value)
     elif isinstance(node, list):

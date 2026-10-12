@@ -6,15 +6,15 @@
   https://plugins-media.makeupar.com/wcm-saas/patterns/lipliner.json
   https://plugins-media.makeupar.com/wcm-saas/patterns/highlighter.json
   https://plugins-media.makeupar.com/wcm-saas/shapes/lipshape.json
-既定値はAPI仕様書の例に載っているラベル。カタログを確認して配置が合うものに差し替えること
-（backend/scripts/youcam_smoke.py --catalog で一覧を表示できる）。
+チークはカタログの形状タグで選んでいる（backend/scripts/youcam_smoke.py --catalog でタグ付き一覧を表示できる）。
+horizontal_low の 1color1 は実APIの試着結果で見た目を確認済み。
 """
 from typing import Any, Dict, List
 
 BLUSH_PATTERNS = {
-    "horizontal_low": "1color1",
-    "apple_high": "1color1",
-    "diagonal_temple": "1color1",
+    "horizontal_low": "1color1",   # tag: Oblong（横長）
+    "apple_high": "1color6",       # tag: Circle（頬の高い位置に丸く）
+    "diagonal_temple": "1color3",  # tag: Rectangle（斜め・こめかみ方向）
 }
 LIP_LINER_NATURAL = "Natural1"
 LIP_LINER_OVER_UPPER = "LargerUpper1"
