@@ -4,9 +4,15 @@ from typing import Tuple, Dict, Any, List
 # N-G01: 禁止用語リスト（容姿批判・ルッキズム・コンプレックス刺激用語）
 FORBIDDEN_TERMS = [
     "ブサイク", "不細工", "不細工な", "醜い", "顔が悪い", "器量", "不格好",
-    "欠点", "劣っている", "ダメな顔", "直す", "整形レベル", "整形でしか",
-    "黄金比から外れている", "点数", "点", "60点", "不合格", "奇形",
+    "欠点", "劣っている", "ダメな顔", "整形レベル", "整形でしか",
+    "黄金比から外れている", "点数", "採点", "スコア", "不合格", "奇形",
     "ugly", "defect", "flaw", "inferior", "unattractive", "score", "points"
+]
+
+# 単語単位では誤検出が多い表現（「焦点」「頂点」「直線」等）は文脈付きパターンで検知
+FORBIDDEN_PATTERNS = [
+    (r"\d+\s*点", "点数"),
+    (r"(顔|鼻|目|口|輪郭|骨格|パーツ)(を|が)?直[すしさせ]", "直す"),
 ]
 
 # N-G02: 禁止ツール・禁止変形パラメータリスト
@@ -32,6 +38,10 @@ class GovernanceViolationError(Exception):
 
 class SafetyGuardrail:
     @staticmethod
+    def _lookism_violation(term: str) -> Tuple[bool, str]:
+        return False, f"倫理規程（ルッキズム排除）違反: 容姿批判・採点表現 '{term}' は使用できません。「比率の視覚的調整」「印象のシフト」として再定義してください。"
+
+    @staticmethod
     def inspect_text_input(text: str) -> Tuple[bool, str]:
         """
         N-G01: ユーザー入力またはプロンプト内の容姿批判用語・ルッキズムをスキャン。
@@ -43,8 +53,11 @@ class SafetyGuardrail:
         lowered = text.lower()
         for term in FORBIDDEN_TERMS:
             if term.lower() in lowered:
-                return False, f"倫理規程（ルッキズム排除）違反: 容姿批判・採点表現 '{term}' は使用できません。「比率の視覚的調整」「印象のシフト」として再定義してください。"
-        
+                return SafetyGuardrail._lookism_violation(term)
+        for pattern, label in FORBIDDEN_PATTERNS:
+            if re.search(pattern, text):
+                return SafetyGuardrail._lookism_violation(label)
+
         # 簡易プロンプトインジェクション検知
         injection_patterns = [
             r"ignore\s+(all\s+)?prior\s+instructions",

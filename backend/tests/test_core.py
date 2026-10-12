@@ -97,3 +97,14 @@ async def test_feedback_replan_execution():
     has_final = any('"type": "final_result"' in e for e in events)
     assert has_final
 
+
+def test_lookism_guardrail_allows_neutral_words_containing_kanji():
+    # 「点」「直」を含む通常の表現は誤検出しない
+    for text in ["目元に焦点を当てたい", "唇の頂点を高く見せたい", "直線的な眉にしたい", "口が直線的に見える"]:
+        safe, _ = SafetyGuardrail.inspect_text_input(text)
+        assert safe, text
+
+    # 文脈付きの採点・矯正表現はブロック
+    for text in ["今は60点くらい", "鼻を直したい", "顔が直せるメイク", "スコアを上げたい"]:
+        safe, _ = SafetyGuardrail.inspect_text_input(text)
+        assert not safe, text
