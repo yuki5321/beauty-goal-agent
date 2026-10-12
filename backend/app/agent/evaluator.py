@@ -1,6 +1,6 @@
 import io
 import json
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from PIL import Image
 from app.config import settings
 from app.agent import gemini
@@ -15,6 +15,32 @@ LIP_OVER_STEP = 0.05
 LIP_OVER_SOFT_MAX = 1.25  # ガードレール上限(1.3)より手前で止める
 # 目標比率からこの範囲内なら調整不要とみなす
 RATIO_TOLERANCE = 0.005
+
+# Critic の要素別スコアから総合点を出す重み（前髪が評価対象外なら残りで正規化）
+ELEMENT_WEIGHTS = {"blush": 0.3, "lip": 0.25, "under_eye": 0.25, "bangs": 0.2}
+ELEMENT_LABELS = {"blush": "チーク", "lip": "リップ", "under_eye": "涙袋", "bangs": "前髪"}
+
+
+def _score_value(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return max(0, min(100, int(round(value))))
+
+
+def combine_element_scores(element_scores: Dict[str, Any], include_bangs: bool) -> Tuple[Optional[int], Dict[str, int]]:
+    """要素別スコアの重み付き平均。戻り値: (総合点, 採用した要素別スコア)"""
+    used: Dict[str, int] = {}
+    for key in ELEMENT_WEIGHTS:
+        if key == "bangs" and not include_bangs:
+            continue
+        value = _score_value(element_scores.get(key))
+        if value is not None:
+            used[key] = value
+    total_weight = sum(ELEMENT_WEIGHTS[k] for k in used)
+    if total_weight <= 0:
+        return None, {}
+    score = sum(ELEMENT_WEIGHTS[k] * v for k, v in used.items()) / total_weight
+    return int(round(score)), used
 
 
 def _detect_mime(image_bytes: bytes) -> str:
@@ -50,7 +76,8 @@ class VisualCriticAgent:
                 self._gemini_contents(original_image_bytes, simulated_image_bytes, goal, current_parameters, iteration, bangs_rendered),
                 temperature=0.2
             )
-            normalized = self._normalize_gemini_result(parsed, current_parameters)
+            include_bangs = bangs_rendered and current_parameters.get("bangs_style", "none") != "none"
+            normalized = self._normalize_gemini_result(parsed, current_parameters, include_bangs)
             if normalized:
                 return normalized
             agent_logger.info("Gemini critic returned no usable result, using rule-based critic.")
@@ -85,13 +112,18 @@ Goal: {goal}
             prompt
         ]
 
-    def _normalize_gemini_result(self, parsed: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Geminiの出力を検証し、スコア範囲とパラメータを安全リミット内に収める"""
+    def _normalize_gemini_result(self, parsed: Any, params: Dict[str, Any], include_bangs: bool = True) -> Dict[str, Any]:
+        """
+        Geminiの出力を検証する。総合点は要素別スコアの重み付き平均をコードで算出し、
+        要素別スコアが無い場合のみ goal_similarity_score を使う。パラメータは安全リミット内に収める。
+        """
         if not isinstance(parsed, dict):
             return {}
-        try:
-            score = max(0, min(100, int(parsed["goal_similarity_score"])))
-        except (KeyError, TypeError, ValueError):
+        element_scores = parsed.get("element_scores")
+        score, used = combine_element_scores(element_scores, include_bangs) if isinstance(element_scores, dict) else (None, {})
+        if score is None:
+            score = _score_value(parsed.get("goal_similarity_score"))
+        if score is None:
             return {}
 
         recommended = parsed.get("recommended_adjustment")
@@ -99,10 +131,15 @@ Goal: {goal}
         if isinstance(recommended, dict):
             merged.update({k: v for k, v in recommended.items() if k in params})
 
+        feedback = str(parsed.get("critic_feedback", ""))
+        if used:
+            breakdown = " / ".join(f"{ELEMENT_LABELS[k]} {v}" for k, v in used.items())
+            feedback = f"（{breakdown}）{feedback}"
         return {
             "goal_similarity_score": score,
             "is_goal_met": score >= settings.SCORE_CONVERGENCE_THRESHOLD,
-            "critic_feedback": str(parsed.get("critic_feedback", "")),
+            "element_scores": used,
+            "critic_feedback": feedback,
             "recommended_adjustment": SafetyGuardrail.clamp_parameters(merged)
         }
 

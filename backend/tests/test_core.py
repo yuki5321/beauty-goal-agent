@@ -556,3 +556,59 @@ def test_act_observation_reports_bangs_outcome():
     assert "前髪（see_through）を適用" in obs(TryOnResult(b"", "youcam", bangs_style="see_through"))["observation"]
     failed = obs(TryOnResult(b"", "youcam", bangs_rendered=False, bangs_style="see_through", bangs_fallback_reason="error_no_shoulder"))
     assert "error_no_shoulder" in failed["observation"]
+
+
+# ---- Critic 採点基準（要素別スコア → 重み付き平均） ----
+
+def test_critic_combines_element_scores_with_weights():
+    from app.agent.evaluator import VisualCriticAgent
+    critic = VisualCriticAgent()
+    params = {"blush_placement": "horizontal_low", "lip_over_ratio": 1.1,
+              "eyeshadow_lower_intensity": 60.0, "bangs_style": "see_through"}
+    parsed = {"element_scores": {"blush": 70, "lip": 80, "under_eye": 60, "bangs": 90},
+              "critic_feedback": "涙袋をもう一段強める余地あり", "recommended_adjustment": {}}
+
+    with_bangs = critic._normalize_gemini_result(parsed, params, include_bangs=True)
+    assert with_bangs["goal_similarity_score"] == 74  # 0.3*70+0.25*80+0.25*60+0.2*90
+    assert with_bangs["element_scores"] == {"blush": 70, "lip": 80, "under_eye": 60, "bangs": 90}
+    assert with_bangs["critic_feedback"].startswith("（チーク 70 / リップ 80 / 涙袋 60 / 前髪 90）")
+
+    without_bangs = critic._normalize_gemini_result(parsed, params, include_bangs=False)
+    assert without_bangs["goal_similarity_score"] == 70  # 前髪を除いて重みを正規化
+    assert "bangs" not in without_bangs["element_scores"]
+
+def test_critic_score_fallbacks_and_clamping():
+    from app.agent.evaluator import VisualCriticAgent
+    critic = VisualCriticAgent()
+    params = {"lip_over_ratio": 1.1}
+
+    legacy = critic._normalize_gemini_result({"goal_similarity_score": 88}, params)
+    assert legacy["goal_similarity_score"] == 88 and legacy["element_scores"] == {}
+
+    clamped = critic._normalize_gemini_result(
+        {"element_scores": {"blush": 150, "lip": -5, "under_eye": "high", "bangs": None}}, params)
+    assert clamped["element_scores"] == {"blush": 100, "lip": 0}  # 数値でない値は欠落扱い
+    assert clamped["goal_similarity_score"] == round((0.3 * 100 + 0.25 * 0) / 0.55)
+
+    assert critic._normalize_gemini_result({"element_scores": {}}, params) == {}
+
+def test_critic_gemini_path_returns_element_scores(monkeypatch):
+    import asyncio
+    from app.agent import gemini, prompts
+    from app.agent.evaluator import critic_agent
+
+    async def fake_generate_json(system_instruction, contents, temperature=0.3):
+        assert system_instruction == prompts.CRITIC_SYSTEM_INSTRUCTION
+        return {"element_scores": {"blush": 80, "lip": 80, "under_eye": 80, "bangs": 80},
+                "critic_feedback": "", "recommended_adjustment": {"lip_over_ratio": 1.2}}
+
+    monkeypatch.setattr(gemini, "get_client", lambda: object())
+    monkeypatch.setattr(gemini, "generate_json", fake_generate_json)
+    monkeypatch.setattr(critic_agent, "_gemini_contents", staticmethod(lambda *a, **k: []))
+
+    plan = {"blush_placement": "horizontal_low", "lip_over_ratio": 1.1,
+            "eyeshadow_lower_intensity": 60.0, "bangs_style": "none"}
+    result = asyncio.run(critic_agent.evaluate_tryon(b"", b"", "midface_shortening", plan, 1, 0.35))
+    assert result["goal_similarity_score"] == 80
+    assert "bangs" not in result["element_scores"]  # bangs_style=none は評価対象外
+    assert result["recommended_adjustment"]["lip_over_ratio"] == 1.2

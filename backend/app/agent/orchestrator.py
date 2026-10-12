@@ -202,6 +202,7 @@ class BeautyGoalOrchestrator:
                 "score": score,
                 "is_goal_met": is_goal_met,
                 "critic_feedback": critic_feedback,
+                "element_scores": eval_res.get("element_scores") or {},
                 "preview_image": f"data:image/jpeg;base64,{simulated_b64}",
                 "plan": current_plan
             })
@@ -213,7 +214,8 @@ class BeautyGoalOrchestrator:
                     "plan": current_plan,
                     "image_b64": simulated_b64,
                     "critic_feedback": critic_feedback,
-                    "bangs_rendered": tryon.bangs_rendered
+                    "bangs_rendered": tryon.bangs_rendered,
+                    "element_scores": eval_res.get("element_scores") or {}
                 }
 
             # 収束判定 (85%以上で完了)
@@ -303,6 +305,7 @@ class BeautyGoalOrchestrator:
             "plan": best_result["plan"],
             "simulated_image": f"data:image/jpeg;base64,{best_result['image_b64']}",
             "bangs_rendered": best_result["bangs_rendered"],
+            "element_scores": best_result["element_scores"],
             "ratio_analysis": self._ratio_analysis(goal, mid_ratio, best_result["plan"]),
             "recipe": recipe,
             "audit_certificate": audit_cert,
@@ -852,6 +855,7 @@ class BeautyGoalOrchestrator:
             "score": eval_score,
             "is_goal_met": is_goal_met,
             "critic_feedback": critic_msg,
+            "element_scores": eval_res.get("element_scores") or {},
             "preview_image": f"data:image/jpeg;base64,{simulated_b64}",
             "plan": adjusted_plan
         })
@@ -884,6 +888,7 @@ class BeautyGoalOrchestrator:
             "plan": adjusted_plan,
             "simulated_image": f"data:image/jpeg;base64,{simulated_b64}",
             "bangs_rendered": tryon.bangs_rendered,
+            "element_scores": eval_res.get("element_scores") or {},
             "ratio_analysis": self._ratio_analysis(goal, base_ratio, adjusted_plan),
             "recipe": recipe,
             "audit_certificate": audit_cert,
