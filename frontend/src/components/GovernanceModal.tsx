@@ -16,7 +16,7 @@ export const GovernanceModal = ({ isOpen, onClose, certificate }: Props) => {
   const defaultCert: GovernanceAuditCertificate = certificate || {
     certificate_id: "CERT-DEMO-2026",
     issued_at: new Date().toISOString(),
-    standard: "Google Cloud Responsible AI & Governance Standards Vol.5",
+    standard: "Beauty Goal Agent Governance Rules N-G01〜N-G04",
     lookism_free_compliance: {
       rule: "N-G01 (コンプレックス非刺激・ルッキズム排除規程)",
       evaluation_mode: "錯視幾何比率シフトのみ測定（容姿採点・欠点指摘の全面排除）",
