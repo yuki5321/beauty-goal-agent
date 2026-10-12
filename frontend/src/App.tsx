@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Header } from "./components/Header";
 import { GoalSelector, GOAL_PRESETS } from "./components/GoalSelector";
 import { PhotoUploader } from "./components/PhotoUploader";
@@ -7,7 +7,7 @@ import { BeforeAfterSlider } from "./components/BeforeAfterSlider";
 import { RecipeCard } from "./components/RecipeCard";
 import { GovernanceModal } from "./components/GovernanceModal";
 import { InteractiveFeedbackChat } from "./components/InteractiveFeedbackChat";
-import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan } from "./types";
+import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan, RatioAnalysis } from "./types";
 import { Play, RotateCcw, Sparkles, ShieldAlert, ShieldCheck } from "lucide-react";
 
 export function App() {
@@ -28,10 +28,38 @@ export function App() {
   const [finalImage, setFinalImage] = useState<string | null>(null);
   const [recipes, setRecipes] = useState<MakeupRecipeItem[] | null>(null);
   const [auditCert, setAuditCert] = useState<GovernanceAuditCertificate | null>(null);
+  const [ratioAnalysis, setRatioAnalysis] = useState<RatioAnalysis | null>(null);
+  const [finalPlan, setFinalPlan] = useState<StylingPlan | null>(null);
   const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // N-G03: サーバー側の生体画像をセッション終了時に即時破棄
+  const sessionIdRef = useRef<string>("");
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  const purgeSession = (keepalive = false) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    sessionIdRef.current = "";
+    setSessionId("");
+    const url = `/api/session/purge/${encodeURIComponent(sid)}`;
+    if (keepalive && navigator.sendBeacon) {
+      navigator.sendBeacon(url);
+      return;
+    }
+    fetch(url, { method: "POST", keepalive }).catch((err) => console.error("purge failed", err));
+  };
+
+  useEffect(() => {
+    const onPageHide = () => purgeSession(true);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
+
   const handleFileSelect = (file: File, preview: string) => {
+    purgeSession();
     setSelectedFile(file);
     setPreviewUrl(preview);
     setFinalImage(null);
@@ -50,6 +78,7 @@ export function App() {
       return;
     }
 
+    purgeSession();
     setIsRunning(true);
     setEvents([]);
     setCurrentScore(0);
@@ -149,6 +178,7 @@ export function App() {
             setEvents((prev) => [...prev, eventData]);
 
             if (eventData.session_id) {
+              sessionIdRef.current = eventData.session_id;
               setSessionId(eventData.session_id);
             }
 
@@ -178,6 +208,8 @@ export function App() {
               if (eventData.audit_certificate) {
                 setAuditCert(eventData.audit_certificate);
               }
+              setRatioAnalysis(eventData.ratio_analysis ?? null);
+              setFinalPlan(eventData.plan ?? null);
               if (eventData.final_score !== undefined) {
                 setCurrentScore(eventData.final_score);
               }
@@ -272,6 +304,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
+                    purgeSession();
                     setEvents([]);
                     setFinalImage(null);
                     setRecipes(null);
@@ -309,6 +342,9 @@ export function App() {
                 beforeImage={previewUrl}
                 afterImage={finalImage}
                 score={currentScore}
+                isGoalMet={isConverged && currentScore >= 85}
+                ratioAnalysis={ratioAnalysis}
+                plan={finalPlan}
               />
             ) : (
               <div className="h-[520px] rounded-2xl border border-slate-800/80 bg-slate-900/30 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-3">

@@ -93,6 +93,7 @@ export interface AgentStepEvent {
   governance_violation?: boolean;
   final_score?: number;
   simulated_image?: string;
+  ratio_analysis?: RatioAnalysis;
   recipe?: MakeupRecipeItem[];
   audit_certificate?: GovernanceAuditCertificate;
   governance_status?: {
@@ -104,9 +105,15 @@ export interface AgentStepEvent {
   speaker?: "optics" | "stylist" | "governance";
   speaker_name?: string;
   argument?: string;
-  stance?: "propose" | "critique" | "approve";
+  stance?: "propose" | "critique" | "approve" | "reject";
   // Hypothesis Rejection fields
   rejected_hypothesis?: string;
   rejection_reason?: string;
   pivoted_strategy?: string;
+}
+
+export interface RatioAnalysis {
+  observed_mid_ratio: number;
+  perceived_mid_ratio: number;
+  ideal_mid_ratio: number;
 }

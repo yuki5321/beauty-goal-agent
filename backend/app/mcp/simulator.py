@@ -2,6 +2,15 @@ import io
 from typing import Dict, Any
 from PIL import Image, ImageDraw, ImageFilter
 
+# 正面自撮りを想定した標準ランドマーク位置（画像高さに対する割合）。
+# 顔検出を行わないため、計測値ではなく典型値（中顔面比率 ≈ 0.357）として扱う。
+HAIRLINE_Y = 0.18
+EYE_Y = 0.40
+NOSE_BOTTOM_Y = 0.58
+UPPER_LIP_Y = 0.65
+CHIN_Y = 0.88
+
+
 class YouCamVirtualTryOnSimulator:
     """
     YouCam MCP互換のバーチャル試着シミュレータ。
@@ -16,11 +25,11 @@ class YouCamVirtualTryOnSimulator:
             w, h = img.size
 
         # デフォルトの顔比率（正面自撮り標準）
-        hairline_y = h * 0.18
-        eye_y = h * 0.40
-        nose_bottom_y = h * 0.58
-        lip_y = h * 0.68
-        chin_y = h * 0.88
+        hairline_y = h * HAIRLINE_Y
+        eye_y = h * EYE_Y
+        nose_bottom_y = h * NOSE_BOTTOM_Y
+        lip_y = h * UPPER_LIP_Y
+        chin_y = h * CHIN_Y
 
         # 三分割比率
         h_upper = eye_y - hairline_y
@@ -32,6 +41,7 @@ class YouCamVirtualTryOnSimulator:
 
         return {
             "status": "SUCCESS",
+            "source": "simulator_default_landmarks",
             "image_size": {"width": w, "height": h},
             "landmarks": {
                 "hairline_y": hairline_y,
@@ -71,9 +81,9 @@ class YouCamVirtualTryOnSimulator:
 
         cx = w * 0.5
         eye_left_x, eye_right_x = w * 0.35, w * 0.65
-        eye_y = h * 0.40
-        nose_y = h * 0.58
-        lip_y = h * 0.68
+        eye_y = h * EYE_Y
+        nose_y = h * NOSE_BOTTOM_Y
+        lip_y = h * UPPER_LIP_Y
 
         # --- A. チーク (Blush) ---
         # horizontal_low: 小鼻より下、横長の楕円で縦の余白を分断

@@ -13,6 +13,10 @@ class StructuredAgentLogger:
             handler.setLevel(logging.INFO)
             self.logger.addHandler(handler)
 
+    def info(self, message: str) -> None:
+        """補助的な情報ログをCloud Logging互換JSONで出力"""
+        print(json.dumps({"severity": "INFO", "component": self.component, "message": message}, ensure_ascii=False), flush=True)
+
     def log_step(
         self,
         session_id: str,

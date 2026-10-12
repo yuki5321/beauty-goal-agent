@@ -97,3 +97,95 @@ async def test_feedback_replan_execution():
     has_final = any('"type": "final_result"' in e for e in events)
     assert has_final
 
+
+def test_lookism_guardrail_allows_neutral_words_containing_kanji():
+    # 「点」「直」を含む通常の表現は誤検出しない
+    for text in ["目元に焦点を当てたい", "唇の頂点を高く見せたい", "直線的な眉にしたい", "口が直線的に見える"]:
+        safe, _ = SafetyGuardrail.inspect_text_input(text)
+        assert safe, text
+
+    # 文脈付きの採点・矯正表現はブロック
+    for text in ["今は60点くらい", "鼻を直したい", "顔が直せるメイク", "スコアを上げたい"]:
+        safe, _ = SafetyGuardrail.inspect_text_input(text)
+        assert not safe, text
+
+def test_biometric_memory_pipeline_expires_other_sessions_on_access():
+    pipe = SessionMemoryPipe(ttl_seconds=10)
+    pipe.store_image("old", b"old_face")
+    pipe._storage["old"]["timestamp"] -= 60
+    pipe.store_image("new", b"new_face")
+
+    # TTL超過セッションはアクセス時に一括破棄される
+    assert pipe.get_image("new") == b"new_face"
+    assert pipe.get_image("old") is None
+    assert pipe.active_session_count() == 1
+
+def _run_loop_events(ratio, monkeypatch):
+    import asyncio, io, json
+    from PIL import Image
+    from app.agent.orchestrator import agent_orchestrator
+    from app.mcp.client import youcam_client
+    from app.agent.evaluator import critic_agent
+
+    async def fake_analyze(_bytes):
+        return {"proportions": {"mid_face_ratio": ratio}}
+
+    async def no_sleep(_s):
+        return None
+
+    monkeypatch.setattr(youcam_client, "analyze_face", fake_analyze)
+    monkeypatch.setattr(critic_agent, "client", None)
+    monkeypatch.setattr("app.agent.orchestrator.asyncio.sleep", no_sleep)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (120, 120), (250, 220, 200)).save(buf, format="JPEG")
+
+    async def collect():
+        return [json.loads(e[len("data: "):]) async for e in
+                agent_orchestrator.run_optimization_loop("session_test01", "midface_shortening", buf.getvalue())]
+    return asyncio.run(collect())
+
+def test_scores_depend_on_observed_ratio(monkeypatch):
+    near = [e["score"] for e in _run_loop_events(0.355, monkeypatch) if e["type"] == "evaluation_result"]
+    far = [e["score"] for e in _run_loop_events(0.42, monkeypatch) if e["type"] == "evaluation_result"]
+    assert near[0] != far[0]
+    assert near[-1] >= 85          # 標準的な比率は錯視調整で収束
+    assert max(far) < 85           # 大きく離れた比率はサーキットブレーカーで終了
+
+def test_circuit_breaker_reported_in_audit(monkeypatch):
+    events = _run_loop_events(0.42, monkeypatch)
+    types = [e["type"] for e in events]
+    assert "circuit_breaker" in types and "converged" not in types
+    final = next(e for e in events if e["type"] == "final_result")
+    assert final["audit_certificate"]["agent_circuit_breaker"]["exit_status"].startswith("CIRCUIT_BREAKER")
+    # 全プランが安全リミット内
+    for e in events:
+        if e["type"] == "evaluation_result":
+            assert 1.0 <= e["plan"]["lip_over_ratio"] <= 1.3
+
+def test_grounding_marks_only_products_found_in_search_answer():
+    import asyncio
+    from types import SimpleNamespace
+    from app.agent.orchestrator import BeautyGoalOrchestrator
+    from app.config import settings
+
+    orch = BeautyGoalOrchestrator()
+    plan = {"blush_placement": "horizontal_low", "lip_over_ratio": 1.1,
+            "eyeshadow_lower_intensity": 50.0, "bangs_style": "see_through"}
+
+    # APIキー未設定時は全商品が未検証
+    if not settings.GEMINI_API_KEY:
+        recipes = asyncio.run(orch._generate_makeup_recipe(plan))
+        assert all(not p["grounding_verified"] for r in recipes for p in r["recommended_products"])
+
+    recipes = [{"recommended_products": [
+        {"brand": "KATE", "name": "リップモンスター", "grounding_verified": False},
+        {"brand": "NARS", "name": "アフターグロー リキッドブラッシュ", "grounding_verified": False},
+    ]}]
+    res = SimpleNamespace(
+        text="KATE リップモンスター 03 陽炎は現在も販売中です。",
+        candidates=[SimpleNamespace(grounding_metadata=SimpleNamespace(grounding_chunks=[object()]))],
+    )
+    BeautyGoalOrchestrator._apply_grounding_result(recipes, res)
+    flags = [p["grounding_verified"] for p in recipes[0]["recommended_products"]]
+    assert flags == [True, False]
