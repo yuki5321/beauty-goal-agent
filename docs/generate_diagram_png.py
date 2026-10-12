@@ -71,7 +71,7 @@ def generate_png():
 
     draw.rounded_rectangle([445, 330, 1055, 410], radius=14, fill=(15, 23, 42), outline=(139, 92, 246), width=2)
     draw.text((465, 345), "Layer 2: In-Memory Biometric Buffer (N-G03 Data Minimization)", fill=(192, 132, 252))
-    draw.text((465, 370), "- RAM-only processing in Cloud Run volatile memory (Disk/DB write FORBIDDEN)", fill=(203, 213, 225))
+    draw.text((465, 370), "- App side: RAM-only, no Disk/DB writes; YouCam API retains up to 24h", fill=(203, 213, 225))
     draw.text((465, 390), "- Instant zero-trace purge on session close or 300s TTL expiration", fill=(167, 139, 250))
 
     # OODA Orchestrator
