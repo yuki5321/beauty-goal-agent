@@ -9,7 +9,22 @@ interface Props {
   isGoalMet?: boolean;
   ratioAnalysis?: RatioAnalysis | null;
   plan?: StylingPlan | null;
+  /** 前髪が試着画像に描画されているか（YouCam API 使用時は未反映） */
+  bangsRendered?: boolean;
 }
+
+const BLUSH_LABELS: Record<string, string> = {
+  horizontal_low: "小鼻下・横長",
+  apple_high: "頬の高い位置・丸く",
+  diagonal_temple: "斜め・こめかみ方向",
+};
+
+const BANGS_LABELS: Record<string, string> = {
+  see_through: "シースルーバング",
+  curtain: "カーテンバング",
+  full_straight: "フルバング",
+  none: "なし",
+};
 
 type LightingMode = "natural" | "office" | "cafe" | "night";
 
@@ -58,7 +73,7 @@ const LIGHTING_PRESETS: LightingPreset[] = [
     icon: "🌙",
     filter: "brightness(0.88) contrast(1.14) sepia(0.15) hue-rotate(-8deg) saturate(1.10)",
     description: "薄暗い夜のバーやディナー照明",
-    analysis: "暗所でもフェイスラインのシェーディング（余白-21%）とリップのハイライトがコントラストを生み、小顔効果が持続します。"
+    analysis: "暗所でもフェイスラインのシェーディングとリップのハイライトがコントラストを生み、小顔効果が持続します。"
   },
 ];
 
@@ -69,6 +84,7 @@ export const BeforeAfterSlider = ({
   isGoalMet = false,
   ratioAnalysis = null,
   plan = null,
+  bangsRendered = true,
 }: Props) => {
   const [sliderPos, setSliderPos] = useState<number>(50);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -145,70 +161,6 @@ export const BeforeAfterSlider = ({
           style={{ filter: activePreset.filter }}
         />
 
-        {/* 錯視サイエンス・オーバーレイ (幾何学ガイド & ヒートマップ) */}
-        {showScienceOverlay && (
-          <div className="absolute inset-0 pointer-events-none z-10">
-            {/* SVG 幾何学メトリクス */}
-            <svg className="w-full h-full" viewBox="0 0 100 100">
-              <defs>
-                <linearGradient id="arrowDownGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#ec4899" stopOpacity="0.9" />
-                </linearGradient>
-              </defs>
-
-              {/* チーク余白分断ゾーン (小鼻下横長グリッド) */}
-              <rect x="20" y="58" width="22" height="8" rx="4" fill="none" stroke="#06b6d4" strokeWidth="0.8" strokeDasharray="1.5,1" opacity="0.85" />
-              <rect x="58" y="58" width="22" height="8" rx="4" fill="none" stroke="#06b6d4" strokeWidth="0.8" strokeDasharray="1.5,1" opacity="0.85" />
-
-              {/* 涙袋拡張アーク (目の下) */}
-              <path d="M 28 43 Q 35 46 42 43" fill="none" stroke="#10b981" strokeWidth="0.8" opacity="0.9" />
-              <path d="M 58 43 Q 65 46 72 43" fill="none" stroke="#10b981" strokeWidth="0.8" opacity="0.9" />
-
-              {/* 人中短縮ベクトル (鼻下〜上唇山) */}
-              <line x1="50" y1="58" x2="50" y2="68" stroke="#f43f5e" strokeWidth="1.2" />
-              <circle cx="50" cy="58" r="1" fill="#f43f5e" />
-              <circle cx="50" cy="68" r="1.2" fill="#ec4899" />
-
-              {/* 視覚重心低下ベクトル (下向き矢印) */}
-              <line x1="50" y1="46" x2="50" y2="55" stroke="url(#arrowDownGrad)" strokeWidth="1.4" />
-            </svg>
-
-            {/* ネオンラベル HUD */}
-            {plan && (
-              <>
-                <div className="absolute top-[62%] left-[53%] -translate-y-1/2 px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-pink-400 border border-pink-500/50 shadow-md">
-                  オーバーリップ: x{plan.lip_over_ratio.toFixed(2)}
-                </div>
-
-                <div className="absolute top-[48%] left-[53%] px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-cyan-300 border border-cyan-500/50 shadow-md">
-                  涙袋強調: {Math.round(plan.eyeshadow_lower_intensity)}%
-                </div>
-              </>
-            )}
-
-            {ratioAnalysis && (
-              <div className="absolute top-[67%] right-[10%] px-1.5 py-0.5 rounded bg-black/75 text-[8px] font-mono text-cyan-300 border border-cyan-500/30">
-                見かけ比率 {((ratioAnalysis.perceived_mid_ratio - ratioAnalysis.observed_mid_ratio) * 100).toFixed(1)}pt
-              </div>
-            )}
-
-            {/* 幾何比率比較HUD (下部) */}
-            {ratioAnalysis && (
-              <div className="absolute bottom-11 right-3 px-2.5 py-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-cyan-500/40 text-[10px] font-mono space-y-0.5 shadow-xl">
-                <div className="text-slate-400 text-[9px]">中顔面比率モデル (H_mid / H_total)</div>
-                <div className="flex items-center gap-2 font-bold">
-                  <span className="text-slate-400 line-through">{ratioAnalysis.observed_mid_ratio.toFixed(3)}</span>
-                  <span className="text-cyan-400">&rarr; {ratioAnalysis.perceived_mid_ratio.toFixed(3)}</span>
-                  <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">
-                    目標 {ratioAnalysis.ideal_mid_ratio.toFixed(3)}{isGoalMet ? " 到達" : ""}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Before画像 (左側/クリップ) */}
         <div
           className="absolute inset-0 overflow-hidden pointer-events-none z-20"
@@ -237,7 +189,7 @@ export const BeforeAfterSlider = ({
           BEFORE (元写真)
         </div>
         <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-pink-600/85 backdrop-blur-md text-white text-[11px] font-bold z-30 pointer-events-none border border-pink-400/30">
-          AFTER (錯視補正済)
+          AFTER (メイク試着)
         </div>
 
         {/* 操作ガイドヒント */}
@@ -245,6 +197,62 @@ export const BeforeAfterSlider = ({
           スライダーを左右にドラッグして比較
         </div>
       </div>
+
+      {/* 錯視サイエンス解析パネル（顔の上には描かず、適用値と評価を一覧表示） */}
+      {showScienceOverlay && (plan || ratioAnalysis) && (
+        <div className="p-3 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-3 max-w-[480px] mx-auto shadow-md">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              錯視サイエンス解析
+            </span>
+            <span className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              評価スコア: {score}%（{isGoalMet ? "Goal達成" : "最高スコア案"}）
+            </span>
+          </div>
+
+          {plan && (
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-500">チーク配置</div>
+                <div className="font-semibold text-slate-100">{BLUSH_LABELS[plan.blush_placement] ?? plan.blush_placement}</div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-500">オーバーリップ</div>
+                <div className="font-semibold text-pink-300 font-mono">x{plan.lip_over_ratio.toFixed(2)}</div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-500">涙袋強調</div>
+                <div className="font-semibold text-cyan-300 font-mono">{Math.round(plan.eyeshadow_lower_intensity)}%</div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-500">前髪</div>
+                <div className="font-semibold text-slate-100">
+                  {BANGS_LABELS[plan.bangs_style] ?? plan.bangs_style}
+                  {!bangsRendered && plan.bangs_style !== "none" && (
+                    <span className="ml-1 text-[10px] font-normal text-amber-300/90">（画像未反映）</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {ratioAnalysis && (
+            <div className="p-2 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1 text-[11px]">
+              <div className="text-slate-500">中顔面比率（参考値）</div>
+              <div className="font-mono text-slate-200">
+                計測 {ratioAnalysis.observed_mid_ratio.toFixed(3)}
+                <span className="text-slate-500"> → </span>
+                比率モデル推定 <span className="text-cyan-300">{ratioAnalysis.perceived_mid_ratio.toFixed(3)}</span>
+                <span className="text-slate-500">（目標 {ratioAnalysis.ideal_mid_ratio.toFixed(3)}）</span>
+              </div>
+              <div className="text-[10px] text-slate-500">
+                メイク量から計算した推定値です。見た目の達成度は上の評価スコア（Critic の画像評価）を参照してください。
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 環境光シミュレータ（照明別の錯視検証コントロール） */}
       <div className="p-3 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-2.5 max-w-[480px] mx-auto shadow-md">

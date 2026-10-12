@@ -210,7 +210,8 @@ class BeautyGoalOrchestrator:
                     "score": score,
                     "plan": current_plan,
                     "image_b64": simulated_b64,
-                    "critic_feedback": critic_feedback
+                    "critic_feedback": critic_feedback,
+                    "bangs_rendered": tryon.bangs_rendered
                 }
 
             # 収束判定 (85%以上で完了)
@@ -299,6 +300,7 @@ class BeautyGoalOrchestrator:
             "final_score": best_result["score"],
             "plan": best_result["plan"],
             "simulated_image": f"data:image/jpeg;base64,{best_result['image_b64']}",
+            "bangs_rendered": best_result["bangs_rendered"],
             "ratio_analysis": self._ratio_analysis(goal, mid_ratio, best_result["plan"]),
             "recipe": recipe,
             "audit_certificate": audit_cert,
@@ -870,6 +872,7 @@ class BeautyGoalOrchestrator:
             "final_score": eval_score,
             "plan": adjusted_plan,
             "simulated_image": f"data:image/jpeg;base64,{simulated_b64}",
+            "bangs_rendered": tryon.bangs_rendered,
             "ratio_analysis": self._ratio_analysis(goal, base_ratio, adjusted_plan),
             "recipe": recipe,
             "audit_certificate": audit_cert,
