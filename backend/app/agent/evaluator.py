@@ -1,9 +1,9 @@
-import asyncio
 import io
 import json
 from typing import Dict, Any, List, Tuple
 from PIL import Image
 from app.config import settings
+from app.agent import gemini
 from app.agent.prompts import CRITIC_SYSTEM_INSTRUCTION
 from app.agent.proportion import ProportionAnalyzer
 from app.governance.guardrail import SafetyGuardrail
@@ -32,17 +32,6 @@ class VisualCriticAgent:
     反省（Reflection）と再調整パラメータを生成する。
     """
 
-    def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
-        self.client = None
-        if self.api_key:
-            try:
-                from google import genai
-                self.client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                agent_logger.info(f"Gemini client init failed, using rule-based critic: {e}")
-                self.client = None
-
     async def evaluate_tryon(
         self,
         original_image_bytes: bytes,
@@ -54,30 +43,28 @@ class VisualCriticAgent:
     ) -> Dict[str, Any]:
         """マルチモーダル評価を実行"""
         # Gemini API キーがある場合は Gemini によるマルチモーダル推論を試行
-        if self.client:
-            try:
-                parsed = await asyncio.to_thread(
-                    self._gemini_evaluate,
-                    original_image_bytes, simulated_image_bytes, goal, current_parameters, iteration
-                )
-                normalized = self._normalize_gemini_result(parsed, current_parameters)
-                if normalized:
-                    return normalized
-                agent_logger.info("Gemini critic returned an unexpected schema, using rule-based critic.")
-            except Exception as e:
-                agent_logger.info(f"Gemini critic failed, using rule-based critic: {e}")
+        if gemini.is_available():
+            parsed = await gemini.generate_json(
+                CRITIC_SYSTEM_INSTRUCTION,
+                self._gemini_contents(original_image_bytes, simulated_image_bytes, goal, current_parameters, iteration),
+                temperature=0.2
+            )
+            normalized = self._normalize_gemini_result(parsed, current_parameters)
+            if normalized:
+                return normalized
+            agent_logger.info("Gemini critic returned no usable result, using rule-based critic.")
 
         # フォールバック: 幾何学的比率計算による客観評価
         return self._rule_based_critic(goal, current_parameters, base_ratio)
 
-    def _gemini_evaluate(
-        self,
+    @staticmethod
+    def _gemini_contents(
         original_image_bytes: bytes,
         simulated_image_bytes: bytes,
         goal: str,
         current_parameters: Dict[str, Any],
         iteration: int
-    ) -> Any:
+    ) -> List[Any]:
         from google.genai import types
 
         prompt = f"""
@@ -88,20 +75,11 @@ Goal: {goal}
 1枚目の元画像と2枚目のメイク・前髪試着後画像を比較し、
 指定されたGoalに対する達成度を評価して指定JSONスキーマのみで回答してください。
 """
-        response = self.client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                types.Part.from_bytes(data=original_image_bytes, mime_type=_detect_mime(original_image_bytes)),
-                types.Part.from_bytes(data=simulated_image_bytes, mime_type=_detect_mime(simulated_image_bytes)),
-                prompt
-            ],
-            config=types.GenerateContentConfig(
-                system_instruction=CRITIC_SYSTEM_INSTRUCTION,
-                response_mime_type="application/json",
-                temperature=0.2
-            )
-        )
-        return json.loads(response.text) if response.text else None
+        return [
+            types.Part.from_bytes(data=original_image_bytes, mime_type=_detect_mime(original_image_bytes)),
+            types.Part.from_bytes(data=simulated_image_bytes, mime_type=_detect_mime(simulated_image_bytes)),
+            prompt
+        ]
 
     def _normalize_gemini_result(self, parsed: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """Geminiの出力を検証し、スコア範囲とパラメータを安全リミット内に収める"""
