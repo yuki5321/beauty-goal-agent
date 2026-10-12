@@ -212,17 +212,13 @@ export const BeforeAfterSlider = ({
         {/* Before画像 (左側/クリップ) */}
         <div
           className="absolute inset-0 overflow-hidden pointer-events-none z-20"
-          style={{ width: `${sliderPos}%` }}
+          style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
         >
           <img
             src={beforeImage}
             alt="Before: 元画像"
             className="absolute inset-0 w-full h-full object-cover max-w-none pointer-events-none transition-[filter] duration-300"
-            style={{
-              width: containerRef.current?.offsetWidth || "100%",
-              height: "100%",
-              filter: activePreset.filter,
-            }}
+            style={{ filter: activePreset.filter }}
           />
         </div>
 

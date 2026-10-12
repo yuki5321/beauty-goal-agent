@@ -2,6 +2,7 @@ import httpx
 from typing import Dict, Any, Optional
 from app.config import settings
 from app.mcp.simulator import YouCamVirtualTryOnSimulator
+from app.observability.logger import agent_logger
 
 class YouCamMCPClient:
     """
@@ -32,9 +33,10 @@ class YouCamMCPClient:
                 )
                 if response.status_code == 200:
                     return response.json()
+                agent_logger.info(f"YouCam analyze_face returned HTTP {response.status_code}, falling back to simulator.")
         except Exception as e:
             # 本番接続失敗時は安全にシミュレータへフォールバック
-            pass
+            agent_logger.info(f"YouCam analyze_face failed, falling back to simulator: {e}")
 
         return YouCamVirtualTryOnSimulator.analyze_face(image_bytes)
 
@@ -76,8 +78,9 @@ class YouCamMCPClient:
                 )
                 if response.status_code == 200 and response.content:
                     return response.content
-        except Exception:
-            pass
+                agent_logger.info(f"YouCam try-on returned HTTP {response.status_code}, falling back to simulator.")
+        except Exception as e:
+            agent_logger.info(f"YouCam try-on failed, falling back to simulator: {e}")
 
         return YouCamVirtualTryOnSimulator.render_tryon(
             image_bytes=image_bytes,
