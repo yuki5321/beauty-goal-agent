@@ -441,7 +441,7 @@ export function App() {
               <div className="flex items-center gap-2.5 text-emerald-400">
                 <ShieldCheck className="w-5 h-5 shrink-0" />
                 <span>
-                  本シミュレーションは **Google Cloud Responsible AI ガバナンス規程**（反ルッキズム・骨格歪曲0%・生体データ最小化）に完全適合しています。
+                  本シミュレーションは本アプリのガバナンス規程 N-G01〜N-G04（反ルッキズム・骨格変形なし・生体データ最小化・反復回数の上限）に沿って実行されています。
                 </span>
               </div>
               <button
@@ -466,7 +466,7 @@ export function App() {
       {/* フッター */}
       <footer className="border-t border-slate-800/80 bg-slate-950 py-6 text-center text-xs text-slate-500">
         <p>
-          Beauty Goal Agent &copy; 2026. Built with Google Cloud Run, Gemini, and YouCam MCP.
+          Beauty Goal Agent &copy; 2026. Built with Google Cloud Run, Gemini, and YouCam API.
         </p>
         <p className="mt-1 text-[11px] text-slate-400">
           ※本システムは他者基準の顔採点・評価を行わず、ユーザー自らが定めた錯視効果の最適化のみを自律的に探索します。

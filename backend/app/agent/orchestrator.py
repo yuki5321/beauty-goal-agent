@@ -498,7 +498,7 @@ class BeautyGoalOrchestrator:
         return {
             "certificate_id": f"CERT-{session_id[-6:].upper()}-{datetime.datetime.now().strftime('%Y%m%d%H%M')}",
             "issued_at": datetime.datetime.now().isoformat(),
-            "standard": "Google Cloud Responsible AI & Governance Standards Vol.5",
+            "standard": "Beauty Goal Agent Governance Rules N-G01〜N-G04",
             "lookism_free_compliance": {
                 "rule": "N-G01 (コンプレックス非刺激・ルッキズム排除規程)",
                 "evaluation_mode": "錯視幾何比率シフトのみ測定（容姿採点・欠点指摘の全面排除）",
@@ -509,7 +509,8 @@ class BeautyGoalOrchestrator:
                 "bone_distortion_rate": "0.00%（物理的骨格変形ツール呼出ゼロ）",
                 "optical_illusion_parameters": {
                     "lip_over_ratio": plan.get("lip_over_ratio", 1.0),
-                    "blush_spread": "Safe Range Compliant"
+                    "blush_intensity": plan.get("blush_intensity", 45.0),
+                    "lip_intensity": plan.get("lip_intensity", 45.0)
                 },
                 "status": "ENFORCED"
             },

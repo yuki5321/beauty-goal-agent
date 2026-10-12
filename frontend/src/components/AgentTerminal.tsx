@@ -300,7 +300,7 @@ export const AgentTerminal: React.FC<Props> = ({
         {isRunning && (
           <div className="flex items-center gap-2 text-pink-400 text-xs py-2">
             <span className="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
-            <span>Agent 推論 &amp; MCP ツール呼び出し中...</span>
+            <span>Agent 推論 &amp; YouCam API 呼び出し中...</span>
           </div>
         )}
 
