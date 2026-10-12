@@ -38,8 +38,8 @@ export const GovernanceModal = ({ isOpen, onClose, certificate }: Props) => {
     agent_circuit_breaker: {
       rule: "N-G04 (暴走防止サーキットブレーカー)",
       max_loop_limit: 3,
-      actual_iterations: 2,
-      exit_status: "CONVERGED (Score: 88%)",
+      actual_iterations: 0,
+      exit_status: "NOT_RUN (サンプル: 最適化実行後に実際の値が表示されます)",
     },
   };
 

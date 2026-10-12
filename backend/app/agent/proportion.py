@@ -27,28 +27,25 @@ class ProportionAnalyzer:
         return round(r_mid, 4)
 
     @staticmethod
+    def ideal_ratio(goal: str) -> float:
+        """Goalごとの目標とする見かけの中顔面比率"""
+        if goal == "midface_shortening" or "中顔面" in goal:
+            return 0.31
+        if goal == "small_face" or "小顔" in goal:
+            return 0.32
+        return 0.315
+
+    @staticmethod
     def calculate_goal_score(goal: str, perceived_ratio: float, alpha: float = 8.0) -> int:
         """
         第2部 3.1 式:
-        Goal Score = max(0, min(100, round(100 - alpha * |R_perceived - 0.31| * 100)))
+        Goal Score = max(0, min(100, round(100 - alpha * |R_perceived - R_ideal| * k)))
         """
-        if goal == "midface_shortening" or "中顔面" in goal:
-            ideal_ratio = 0.31
-            diff = abs(perceived_ratio - ideal_ratio)
-            score = 100.0 - (alpha * diff * 100.0)
-            return max(0, min(100, int(round(score))))
-        elif "小顔" in goal or goal == "small_face":
-            # 小顔目標: 理想比率とのバランス
-            ideal_ratio = 0.32
-            diff = abs(perceived_ratio - ideal_ratio)
-            score = 100.0 - (alpha * diff * 90.0)
-            return max(0, min(100, int(round(score))))
-        else:
-            # 汎用ゴール
-            ideal_ratio = 0.315
-            diff = abs(perceived_ratio - ideal_ratio)
-            score = 100.0 - (alpha * diff * 100.0)
-            return max(0, min(100, int(round(score))))
+        diff = abs(perceived_ratio - ProportionAnalyzer.ideal_ratio(goal))
+        # 小顔目標は比率差への感度をやや緩める
+        k = 90.0 if (goal == "small_face" or "小顔" in goal) else 100.0
+        score = 100.0 - (alpha * diff * k)
+        return max(0, min(100, int(round(score))))
 
     @staticmethod
     def simulate_perceived_ratio_shift(

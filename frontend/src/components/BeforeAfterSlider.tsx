@@ -1,10 +1,14 @@
 import { useState, useRef, useCallback, type TouchEvent, type MouseEvent } from "react";
+import type { RatioAnalysis, StylingPlan } from "../types";
 import { Sparkles, ArrowLeftRight, Activity, SunMedium, Lightbulb } from "lucide-react";
 
 interface Props {
   beforeImage: string;
   afterImage: string;
   score?: number;
+  isGoalMet?: boolean;
+  ratioAnalysis?: RatioAnalysis | null;
+  plan?: StylingPlan | null;
 }
 
 type LightingMode = "natural" | "office" | "cafe" | "night";
@@ -61,7 +65,10 @@ const LIGHTING_PRESETS: LightingPreset[] = [
 export const BeforeAfterSlider = ({
   beforeImage,
   afterImage,
-  score = 88,
+  score = 0,
+  isGoalMet = false,
+  ratioAnalysis = null,
+  plan = null,
 }: Props) => {
   const [sliderPos, setSliderPos] = useState<number>(50);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -115,7 +122,7 @@ export const BeforeAfterSlider = ({
           </button>
 
           <div className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-            達成率: {score}% (Goal達成)
+            達成率: {score}% ({isGoalMet ? "Goal達成" : "最高スコア案"})
           </div>
         </div>
       </div>
@@ -168,27 +175,37 @@ export const BeforeAfterSlider = ({
             </svg>
 
             {/* ネオンラベル HUD */}
-            <div className="absolute top-[62%] left-[53%] -translate-y-1/2 px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-pink-400 border border-pink-500/50 shadow-md">
-              人中短縮: -3.2mm
-            </div>
+            {plan && (
+              <>
+                <div className="absolute top-[62%] left-[53%] -translate-y-1/2 px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-pink-400 border border-pink-500/50 shadow-md">
+                  オーバーリップ: x{plan.lip_over_ratio.toFixed(2)}
+                </div>
 
-            <div className="absolute top-[48%] left-[53%] px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-cyan-300 border border-cyan-500/50 shadow-md">
-              重心: ↓ 12px下降
-            </div>
+                <div className="absolute top-[48%] left-[53%] px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-cyan-300 border border-cyan-500/50 shadow-md">
+                  涙袋強調: {Math.round(plan.eyeshadow_lower_intensity)}%
+                </div>
+              </>
+            )}
 
-            <div className="absolute top-[67%] right-[10%] px-1.5 py-0.5 rounded bg-black/75 text-[8px] font-mono text-cyan-300 border border-cyan-500/30">
-              余白カット -21%
-            </div>
+            {ratioAnalysis && (
+              <div className="absolute top-[67%] right-[10%] px-1.5 py-0.5 rounded bg-black/75 text-[8px] font-mono text-cyan-300 border border-cyan-500/30">
+                見かけ比率 {((ratioAnalysis.perceived_mid_ratio - ratioAnalysis.observed_mid_ratio) * 100).toFixed(1)}pt
+              </div>
+            )}
 
             {/* 幾何比率比較HUD (下部) */}
-            <div className="absolute bottom-11 right-3 px-2.5 py-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-cyan-500/40 text-[10px] font-mono space-y-0.5 shadow-xl">
-              <div className="text-slate-400 text-[9px]">中顔面比率解析 (H_mid / H_total)</div>
-              <div className="flex items-center gap-2 font-bold">
-                <span className="text-slate-400 line-through">0.355</span>
-                <span className="text-cyan-400">&rarr; 0.312</span>
-                <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">黄金比達成</span>
+            {ratioAnalysis && (
+              <div className="absolute bottom-11 right-3 px-2.5 py-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-cyan-500/40 text-[10px] font-mono space-y-0.5 shadow-xl">
+                <div className="text-slate-400 text-[9px]">中顔面比率モデル (H_mid / H_total)</div>
+                <div className="flex items-center gap-2 font-bold">
+                  <span className="text-slate-400 line-through">{ratioAnalysis.observed_mid_ratio.toFixed(3)}</span>
+                  <span className="text-cyan-400">&rarr; {ratioAnalysis.perceived_mid_ratio.toFixed(3)}</span>
+                  <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">
+                    目標 {ratioAnalysis.ideal_mid_ratio.toFixed(3)}{isGoalMet ? " 到達" : ""}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

@@ -7,7 +7,7 @@ import { BeforeAfterSlider } from "./components/BeforeAfterSlider";
 import { RecipeCard } from "./components/RecipeCard";
 import { GovernanceModal } from "./components/GovernanceModal";
 import { InteractiveFeedbackChat } from "./components/InteractiveFeedbackChat";
-import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan } from "./types";
+import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan, RatioAnalysis } from "./types";
 import { Play, RotateCcw, Sparkles, ShieldAlert, ShieldCheck } from "lucide-react";
 
 export function App() {
@@ -28,6 +28,8 @@ export function App() {
   const [finalImage, setFinalImage] = useState<string | null>(null);
   const [recipes, setRecipes] = useState<MakeupRecipeItem[] | null>(null);
   const [auditCert, setAuditCert] = useState<GovernanceAuditCertificate | null>(null);
+  const [ratioAnalysis, setRatioAnalysis] = useState<RatioAnalysis | null>(null);
+  const [finalPlan, setFinalPlan] = useState<StylingPlan | null>(null);
   const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -206,6 +208,8 @@ export function App() {
               if (eventData.audit_certificate) {
                 setAuditCert(eventData.audit_certificate);
               }
+              setRatioAnalysis(eventData.ratio_analysis ?? null);
+              setFinalPlan(eventData.plan ?? null);
               if (eventData.final_score !== undefined) {
                 setCurrentScore(eventData.final_score);
               }
@@ -338,6 +342,9 @@ export function App() {
                 beforeImage={previewUrl}
                 afterImage={finalImage}
                 score={currentScore}
+                isGoalMet={isConverged && currentScore >= 85}
+                ratioAnalysis={ratioAnalysis}
+                plan={finalPlan}
               />
             ) : (
               <div className="h-[520px] rounded-2xl border border-slate-800/80 bg-slate-900/30 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-3">

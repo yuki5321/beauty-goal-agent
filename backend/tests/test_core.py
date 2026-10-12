@@ -119,3 +119,46 @@ def test_biometric_memory_pipeline_expires_other_sessions_on_access():
     assert pipe.get_image("new") == b"new_face"
     assert pipe.get_image("old") is None
     assert pipe.active_session_count() == 1
+
+def _run_loop_events(ratio, monkeypatch):
+    import asyncio, io, json
+    from PIL import Image
+    from app.agent.orchestrator import agent_orchestrator
+    from app.mcp.client import youcam_client
+    from app.agent.evaluator import critic_agent
+
+    async def fake_analyze(_bytes):
+        return {"proportions": {"mid_face_ratio": ratio}}
+
+    async def no_sleep(_s):
+        return None
+
+    monkeypatch.setattr(youcam_client, "analyze_face", fake_analyze)
+    monkeypatch.setattr(critic_agent, "client", None)
+    monkeypatch.setattr("app.agent.orchestrator.asyncio.sleep", no_sleep)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (120, 120), (250, 220, 200)).save(buf, format="JPEG")
+
+    async def collect():
+        return [json.loads(e[len("data: "):]) async for e in
+                agent_orchestrator.run_optimization_loop("session_test01", "midface_shortening", buf.getvalue())]
+    return asyncio.run(collect())
+
+def test_scores_depend_on_observed_ratio(monkeypatch):
+    near = [e["score"] for e in _run_loop_events(0.355, monkeypatch) if e["type"] == "evaluation_result"]
+    far = [e["score"] for e in _run_loop_events(0.42, monkeypatch) if e["type"] == "evaluation_result"]
+    assert near[0] != far[0]
+    assert near[-1] >= 85          # 標準的な比率は錯視調整で収束
+    assert max(far) < 85           # 大きく離れた比率はサーキットブレーカーで終了
+
+def test_circuit_breaker_reported_in_audit(monkeypatch):
+    events = _run_loop_events(0.42, monkeypatch)
+    types = [e["type"] for e in events]
+    assert "circuit_breaker" in types and "converged" not in types
+    final = next(e for e in events if e["type"] == "final_result")
+    assert final["audit_certificate"]["agent_circuit_breaker"]["exit_status"].startswith("CIRCUIT_BREAKER")
+    # 全プランが安全リミット内
+    for e in events:
+        if e["type"] == "evaluation_result":
+            assert 1.0 <= e["plan"]["lip_over_ratio"] <= 1.3

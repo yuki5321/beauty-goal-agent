@@ -131,6 +131,8 @@ export const AgentTerminal: React.FC<Props> = ({
                 ? "仮説提起"
                 : ev.stance === "critique"
                 ? "反論・補正"
+                : ev.stance === "reject"
+                ? "安全差し戻し"
                 : "安全承認";
 
             return (

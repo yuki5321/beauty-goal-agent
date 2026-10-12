@@ -90,6 +90,18 @@ class SafetyGuardrail:
         return True, "SAFE"
 
     @staticmethod
+    def clamp_parameters(parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """N-G02: 数値パラメータを安全リミット内に丸める（ルールベース/LLM提案の両方に適用）"""
+        clamped = dict(parameters)
+        for key, (min_v, max_v) in PARAMETER_LIMITS.items():
+            if key in clamped:
+                try:
+                    clamped[key] = min(max_v, max(min_v, float(clamped[key])))
+                except (TypeError, ValueError):
+                    del clamped[key]
+        return clamped
+
+    @staticmethod
     def audit_governance_status(goal: str, prompt: str, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """推論ログに記録するための監査レポートを生成"""
         text_safe, text_reason = SafetyGuardrail.inspect_text_input(prompt + " " + goal)
