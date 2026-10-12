@@ -108,3 +108,14 @@ def test_lookism_guardrail_allows_neutral_words_containing_kanji():
     for text in ["今は60点くらい", "鼻を直したい", "顔が直せるメイク", "スコアを上げたい"]:
         safe, _ = SafetyGuardrail.inspect_text_input(text)
         assert not safe, text
+
+def test_biometric_memory_pipeline_expires_other_sessions_on_access():
+    pipe = SessionMemoryPipe(ttl_seconds=10)
+    pipe.store_image("old", b"old_face")
+    pipe._storage["old"]["timestamp"] -= 60
+    pipe.store_image("new", b"new_face")
+
+    # TTL超過セッションはアクセス時に一括破棄される
+    assert pipe.get_image("new") == b"new_face"
+    assert pipe.get_image("old") is None
+    assert pipe.active_session_count() == 1

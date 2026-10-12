@@ -1,5 +1,7 @@
+import asyncio
 import os
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +11,15 @@ from app.config import settings
 from app.agent.orchestrator import agent_orchestrator
 from app.governance.memory_pipe import memory_pipe
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # N-G03: TTL超過の生体画像を定期的に破棄
+    sweeper = asyncio.create_task(memory_pipe.run_ttl_sweeper())
+    yield
+    sweeper.cancel()
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Beauty Goal Agent API",
     description="自律型メイク・スタイリング最適化エージェント API (OODA Loop & YouCam MCP / Gemini)",
     version="1.0.0"

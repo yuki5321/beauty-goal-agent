@@ -1,7 +1,8 @@
+import asyncio
 import gc
 import io
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 class SessionMemoryPipe:
     """
@@ -24,11 +25,9 @@ class SessionMemoryPipe:
         }
 
     def get_image(self, session_id: str) -> Optional[bytes]:
+        self._cleanup_expired()
         data = self._storage.get(session_id)
         if not data:
-            return None
-        if time.time() - data["timestamp"] > self.ttl_seconds:
-            self.purge_session(session_id)
             return None
         return data["image_bytes"]
 
@@ -36,6 +35,15 @@ class SessionMemoryPipe:
         if session_id in self._storage:
             del self._storage[session_id]
             gc.collect()
+
+    def active_session_count(self) -> int:
+        return len(self._storage)
+
+    async def run_ttl_sweeper(self, interval_seconds: int = 30) -> None:
+        """新規アクセスが無くてもTTL超過画像を定期破棄するバックグラウンドタスク"""
+        while True:
+            await asyncio.sleep(interval_seconds)
+            self._cleanup_expired()
 
     def _cleanup_expired(self) -> None:
         now = time.time()

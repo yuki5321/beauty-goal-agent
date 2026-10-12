@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Header } from "./components/Header";
 import { GoalSelector, GOAL_PRESETS } from "./components/GoalSelector";
 import { PhotoUploader } from "./components/PhotoUploader";
@@ -31,7 +31,33 @@ export function App() {
   const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // N-G03: サーバー側の生体画像をセッション終了時に即時破棄
+  const sessionIdRef = useRef<string>("");
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  const purgeSession = (keepalive = false) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    sessionIdRef.current = "";
+    setSessionId("");
+    const url = `/api/session/purge/${encodeURIComponent(sid)}`;
+    if (keepalive && navigator.sendBeacon) {
+      navigator.sendBeacon(url);
+      return;
+    }
+    fetch(url, { method: "POST", keepalive }).catch((err) => console.error("purge failed", err));
+  };
+
+  useEffect(() => {
+    const onPageHide = () => purgeSession(true);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
+
   const handleFileSelect = (file: File, preview: string) => {
+    purgeSession();
     setSelectedFile(file);
     setPreviewUrl(preview);
     setFinalImage(null);
@@ -50,6 +76,7 @@ export function App() {
       return;
     }
 
+    purgeSession();
     setIsRunning(true);
     setEvents([]);
     setCurrentScore(0);
@@ -149,6 +176,7 @@ export function App() {
             setEvents((prev) => [...prev, eventData]);
 
             if (eventData.session_id) {
+              sessionIdRef.current = eventData.session_id;
               setSessionId(eventData.session_id);
             }
 
@@ -272,6 +300,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
+                    purgeSession();
                     setEvents([]);
                     setFinalImage(null);
                     setRecipes(null);
