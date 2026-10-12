@@ -5,12 +5,15 @@ interface Props {
   previewUrl: string | null;
   onFileSelect: (file: File, preview: string) => void;
   disabled?: boolean;
+  /** YouCam API（外部）へ写真を送信する構成か。null は確認中 */
+  sendsToExternalApi?: boolean | null;
 }
 
 export const PhotoUploader = ({
   previewUrl,
   onFileSelect,
   disabled,
+  sendsToExternalApi = null,
 }: Props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -267,7 +270,7 @@ export const PhotoUploader = ({
               <span>顔写真が正常にセットされました</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              クリックすると別の写真を選択できます（RAM上のみで処理され保存されません）
+              クリックすると別の写真を選択できます
             </p>
           </div>
         ) : (
@@ -331,6 +334,13 @@ export const PhotoUploader = ({
           </div>
         </div>
       )}
+
+      {/* N-G03: 写真の取り扱い（外部送信の有無を明示） */}
+      <p className="text-[11px] leading-relaxed text-slate-400">
+        {sendsToExternalApi
+          ? "写真は試着画像の生成と顔比率の計測のため YouCam API（Perfect Corp）へ送信され、先方で最大24時間保持されます。アプリ側ではディスク・DBに保存せず、セッション終了時に破棄します。"
+          : "写真はアプリのメモリ上でのみ処理され、ディスク・DBには保存されません。セッション終了時に破棄します。"}
+      </p>
     </div>
   );
 };

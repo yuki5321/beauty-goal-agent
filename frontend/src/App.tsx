@@ -33,6 +33,15 @@ export function App() {
   const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // N-G03: 写真を外部（YouCam API）へ送信する構成かを表示するためにサーバー設定を取得
+  const [sendsToExternalApi, setSendsToExternalApi] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((health) => setSendsToExternalApi(!health.use_mock_youcam))
+      .catch(() => setSendsToExternalApi(null));
+  }, []);
+
   // N-G03: サーバー側の生体画像をセッション終了時に即時破棄
   const sessionIdRef = useRef<string>("");
   useEffect(() => {
@@ -259,6 +268,7 @@ export function App() {
               previewUrl={previewUrl}
               onFileSelect={handleFileSelect}
               disabled={isRunning}
+              sendsToExternalApi={sendsToExternalApi}
             />
           </div>
 
@@ -389,7 +399,7 @@ export function App() {
               <div className="flex items-center gap-2.5 text-emerald-400">
                 <ShieldCheck className="w-5 h-5 shrink-0" />
                 <span>
-                  本シミュレーションは **Google Cloud Responsible AI ガバナンス規程**（反ルッキズム・骨格歪曲0%・生体データRAM限定）に完全適合しています。
+                  本シミュレーションは **Google Cloud Responsible AI ガバナンス規程**（反ルッキズム・骨格歪曲0%・生体データ最小化）に完全適合しています。
                 </span>
               </div>
               <button

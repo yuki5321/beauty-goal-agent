@@ -7,9 +7,11 @@ from typing import Any, Dict, Optional
 class SessionMemoryPipe:
     """
     N-G03: 生体顔写真のデータ最小化と即時破棄。
-    アップロードされた顔画像はCloud RunのRAM（メモリ）上でのみ処理し、
+    アップロードされた顔画像はアプリ側ではCloud RunのRAM（メモリ）上でのみ保持し、
     ファイルシステムやDBへの永続保存を禁止する。
-    セッション完了またはタイムアウト時にメモリ変数を強制消去（ゼロフィル/GC）する。
+    セッション完了またはタイムアウト時にメモリ変数を破棄（GC）する。
+    ※YouCam APIキー設定時は試着・顔分析のため画像を YouCam API (Perfect Corp) へ送信する
+      （先方で最大24時間保持。app/mcp/youcam_api.py 参照）。
     """
     def __init__(self, ttl_seconds: int = 300):
         # session_id -> {"image_bytes": bytes, "timestamp": float, "content_type": str}

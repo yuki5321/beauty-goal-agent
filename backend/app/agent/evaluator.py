@@ -39,14 +39,15 @@ class VisualCriticAgent:
         goal: str,
         current_parameters: Dict[str, Any],
         iteration: int,
-        base_ratio: float
+        base_ratio: float,
+        bangs_rendered: bool = True
     ) -> Dict[str, Any]:
         """マルチモーダル評価を実行"""
         # Gemini API キーがある場合は Gemini によるマルチモーダル推論を試行
         if gemini.is_available():
             parsed = await gemini.generate_json(
                 CRITIC_SYSTEM_INSTRUCTION,
-                self._gemini_contents(original_image_bytes, simulated_image_bytes, goal, current_parameters, iteration),
+                self._gemini_contents(original_image_bytes, simulated_image_bytes, goal, current_parameters, iteration, bangs_rendered),
                 temperature=0.2
             )
             normalized = self._normalize_gemini_result(parsed, current_parameters)
@@ -63,7 +64,8 @@ class VisualCriticAgent:
         simulated_image_bytes: bytes,
         goal: str,
         current_parameters: Dict[str, Any],
-        iteration: int
+        iteration: int,
+        bangs_rendered: bool = True
     ) -> List[Any]:
         from google.genai import types
 
@@ -75,6 +77,8 @@ Goal: {goal}
 1枚目の元画像と2枚目のメイク・前髪試着後画像を比較し、
 指定されたGoalに対する達成度を評価して指定JSONスキーマのみで回答してください。
 """
+        if not bangs_rendered:
+            prompt += "\n※前髪（bangs_style）は試着画像に反映されていないため、前髪の効果は評価対象外とし、チーク・リップ・涙袋のみで評価してください。\n"
         return [
             types.Part.from_bytes(data=original_image_bytes, mime_type=_detect_mime(original_image_bytes)),
             types.Part.from_bytes(data=simulated_image_bytes, mime_type=_detect_mime(simulated_image_bytes)),

@@ -304,3 +304,130 @@ def test_feedback_replan_uses_gemini_interpretation(monkeypatch):
     assert final["plan"]["blush_placement"] == "diagonal_temple"
     assert final["plan"]["blush_color"] == "#C8786E"
     assert final["plan"]["eyeshadow_lower_intensity"] == 55.0  # 指定外のキーは現状維持
+
+
+# ---- YouCam API クライアント (httpx.MockTransport で実APIの応答を再現) ----
+
+def _jpeg_bytes(size=(400, 500)):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, (240, 210, 190)).save(buf, format="PNG")  # PNGでも内部でJPEG化される
+    return buf.getvalue()
+
+def _youcam_transport(task_results, calls, poll_statuses=("running", "success"), error=None):
+    import httpx
+    polls = {"n": 0}
+
+    def handler(request: httpx.Request):
+        path = request.url.path
+        calls.append((request.method, path))
+        if request.method == "POST" and path == "/s2s/v2.0/file":
+            assert request.headers["Authorization"] == "Bearer test-key"
+            return httpx.Response(200, json={"status": 200, "data": {"files": [{
+                "file_id": "fid-1", "content_type": "image/jpeg", "file_name": "face.jpg",
+                "requests": [{"url": "https://upload.example.com/put", "method": "PUT",
+                              "headers": {"Content-Type": "image/jpeg", "Content-Length": 1}}]}]}})
+        if request.method == "PUT" and request.url.host == "upload.example.com":
+            assert request.content[:2] == b"\xff\xd8"  # JPEG
+            return httpx.Response(200)
+        if request.method == "POST" and path.startswith("/s2s/v2.0/task/"):
+            assert request.read() and b"fid-1" in request.content
+            return httpx.Response(200, json={"status": 200, "data": {"task_id": "t-1"}})
+        if request.method == "GET" and path.startswith("/s2s/v2.0/task/"):
+            feature = path.split("/")[4]
+            status = poll_statuses[min(polls["n"], len(poll_statuses) - 1)]
+            polls["n"] += 1
+            data = {"task_status": status}
+            if status == "success":
+                data["results"] = task_results[feature]
+            if status == "error":
+                data.update({"error": error, "error_message": "detail"})
+            return httpx.Response(200, json={"status": 200, "data": data})
+        if request.method == "GET" and request.url.host == "result.example.com":
+            assert "Authorization" not in request.headers
+            return httpx.Response(200, content=b"RESULT-IMAGE")
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+def _youcam_client(transport, poll_timeout=5.0):
+    from app.mcp.client import YouCamMCPClient
+    from app.mcp.youcam_api import YouCamAPI
+    api = YouCamAPI("https://yce-api-01.makeupar.com", "test-key", poll_interval=0, poll_timeout=poll_timeout, transport=transport)
+    client = YouCamMCPClient(api=api)
+    client.use_mock = False
+    return client
+
+def test_youcam_makeup_flow_returns_result_image():
+    import asyncio
+    calls = []
+    client = _youcam_client(_youcam_transport({"makeup-vto": {"url": "https://result.example.com/r.jpg"}}, calls))
+    plan = {"blush_placement": "horizontal_low", "blush_color": "#FF8C7A", "lip_over_ratio": 1.1,
+            "eyeshadow_lower_intensity": 55.0, "bangs_style": "see_through"}
+
+    result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), plan))
+    assert result.source == "youcam" and result.image_bytes == b"RESULT-IMAGE"
+    assert result.bangs_rendered is False and result.fallback_reason is None
+    methods = [m for m, _ in calls]
+    assert methods[:3] == ["POST", "PUT", "POST"] and methods.count("GET") >= 2
+
+    # 同じ画像の2回目はアップロードを再利用
+    calls.clear()
+    asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), plan))
+    assert ("POST", "/s2s/v2.0/file") not in calls
+
+def test_youcam_task_error_falls_back_to_simulator():
+    import asyncio
+    calls = []
+    client = _youcam_client(_youcam_transport({}, calls, poll_statuses=("error",), error="error_face_position_invalid"))
+    result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), {"lip_over_ratio": 1.1}))
+    assert result.source == "simulator"
+    assert result.fallback_reason == "error_face_position_invalid"
+    assert result.image_bytes[:2] == b"\xff\xd8"
+
+def test_youcam_poll_timeout_falls_back():
+    import asyncio
+    client = _youcam_client(_youcam_transport({}, [], poll_statuses=("running",)), poll_timeout=0)
+    result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), {}))
+    assert result.source == "simulator" and result.fallback_reason == "poll_timeout"
+
+def test_youcam_face_analysis_uses_horizontal_third_and_caches():
+    import asyncio
+    calls = []
+    client = _youcam_client(_youcam_transport(
+        {"face-attr-analysis": {"facialratio": {"horizontal_third": [30, 36, 34]}}}, calls))
+    image = _jpeg_bytes()
+    first = asyncio.run(client.analyze_face(image))
+    assert first["source"] == "youcam"
+    assert first["proportions"]["mid_face_ratio"] == 0.36
+    n = len(calls)
+    second = asyncio.run(client.analyze_face(image))
+    assert second == first and len(calls) == n  # 10ユニット消費を避けるためキャッシュ
+
+    client.forget(image)
+    asyncio.run(client.analyze_face(image))
+    assert len(calls) > n
+
+def test_youcam_effects_mapping_is_within_limits():
+    from app.mcp.youcam_mapping import plan_to_effects, LIP_LINER_NATURAL, LIP_LINER_OVER_UPPER
+
+    def numbers(obj):
+        if isinstance(obj, dict):
+            for v in obj.values():
+                yield from numbers(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                yield from numbers(v)
+        elif isinstance(obj, (int, float)):
+            yield obj
+
+    for lip, under_eye in [(1.0, 0.0), (1.18, 85.0), (1.3, 100.0)]:
+        effects = plan_to_effects({"blush_placement": "apple_high", "lip_over_ratio": lip,
+                                   "eyeshadow_lower_intensity": under_eye})
+        assert all(0 <= n <= 100 for n in numbers(effects))
+        liner = next(e for e in effects if e["category"] == "lip_liner")
+        assert liner["pattern"]["name"] == (LIP_LINER_OVER_UPPER if lip > 1.0 else LIP_LINER_NATURAL)
+        lip_color = next(e for e in effects if e["category"] == "lip_color")
+        assert "morphology" not in lip_color  # N-G02: 唇の形状変形は使わない
+        assert any(e["category"] == "concealer" for e in effects) == (under_eye > 0)

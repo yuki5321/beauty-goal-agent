@@ -30,9 +30,9 @@ export const GovernanceModal = ({ isOpen, onClose, certificate }: Props) => {
     },
     biometric_data_safety: {
       rule: "N-G03 (生体顔写真データ最小化と即時破棄)",
-      storage_type: "Cloud Run RAM (Volatile Memory Only)",
-      disk_db_persistence: "FORBIDDEN & NONE",
-      ttl_purge_policy: "Session Close / 300s TTL (Zero Trace)",
+      storage_type: "Cloud Run RAM（YouCam API 使用時は Perfect Corp へ送信して処理）",
+      disk_db_persistence: "FORBIDDEN & NONE（アプリ側）",
+      ttl_purge_policy: "アプリ側: セッション終了時 / 300s TTL で破棄",
       status: "VERIFIED",
     },
     agent_circuit_breaker: {
@@ -135,8 +135,13 @@ export const GovernanceModal = ({ isOpen, onClose, certificate }: Props) => {
                 </span>
               </div>
               <p className="text-slate-400 font-sans text-xs">
-                保存先: {defaultCert.biometric_data_safety.storage_type} / ディスク永続化: {defaultCert.biometric_data_safety.disk_db_persistence}。セッション終了時ゼロトレース消去。
+                保存先: {defaultCert.biometric_data_safety.storage_type} / ディスク永続化: {defaultCert.biometric_data_safety.disk_db_persistence}。{defaultCert.biometric_data_safety.ttl_purge_policy}。
               </p>
+              {defaultCert.biometric_data_safety.external_processing && (
+                <p className="text-amber-300/90 font-sans text-xs">
+                  外部処理: {defaultCert.biometric_data_safety.external_processing}
+                </p>
+              )}
             </div>
 
             {/* N-G04 */}

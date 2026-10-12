@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.agent.orchestrator import agent_orchestrator
 from app.governance.memory_pipe import memory_pipe
+from app.mcp.client import youcam_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +44,8 @@ async def health_check():
         "service": "Beauty Goal Agent Core",
         "gemini_configured": bool(settings.GEMINI_API_KEY),
         "youcam_configured": bool(settings.YOUCAM_API_KEY),
-        "use_mock_youcam": settings.USE_MOCK_YOUCAM or not bool(settings.YOUCAM_API_KEY)
+        "use_mock_youcam": youcam_client.use_mock,
+        "youcam_base_url_host": urlparse(settings.YOUCAM_BASE_URL).netloc
     }
 
 @app.post("/api/agent/optimize")
@@ -52,7 +55,8 @@ async def optimize_beauty_goal(
 ):
     """
     顔画像と目標（Goal）を受け取り、OODA試行錯誤ループをSSE形式でリアルタイム配信する。
-    生体画像データはRAMメモリ上でのみ処理され、ディスク・DBへの保存は行われません。
+    生体画像データはアプリ側ではRAM上でのみ保持され、ディスク・DBへの保存は行いません。
+    YouCam APIキー設定時は試着・顔分析のため YouCam API (Perfect Corp) へ送信されます（先方で最大24時間保持）。
     """
     if not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="有効な画像ファイルをアップロードしてください。")
@@ -118,6 +122,9 @@ async def feedback_replan_endpoint(
 @app.post("/api/session/purge/{session_id}")
 async def purge_session(session_id: str):
     """N-G03: セッション終了時にメモリから生体顔画像データを即時破棄"""
+    image_bytes = memory_pipe.get_image(session_id)
+    if image_bytes:
+        youcam_client.forget(image_bytes)
     memory_pipe.purge_session(session_id)
     return {"status": "SUCCESS", "message": f"Session {session_id} memory purged."}
 

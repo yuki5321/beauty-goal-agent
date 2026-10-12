@@ -1,0 +1,85 @@
+"""
+スタイリングパラメータ → YouCam makeup-vto の effects 変換。
+
+パターン名は YouCam のパターンカタログのラベルと一致している必要がある:
+  https://plugins-media.makeupar.com/wcm-saas/patterns/blush.json
+  https://plugins-media.makeupar.com/wcm-saas/patterns/lipliner.json
+  https://plugins-media.makeupar.com/wcm-saas/patterns/highlighter.json
+  https://plugins-media.makeupar.com/wcm-saas/shapes/lipshape.json
+既定値はAPI仕様書の例に載っているラベル。カタログを確認して配置が合うものに差し替えること
+（backend/scripts/youcam_smoke.py --catalog で一覧を表示できる）。
+"""
+from typing import Any, Dict, List
+
+BLUSH_PATTERNS = {
+    "horizontal_low": "1color1",
+    "apple_high": "1color1",
+    "diagonal_temple": "1color1",
+}
+LIP_LINER_NATURAL = "Natural1"
+LIP_LINER_OVER_UPPER = "LargerUpper1"
+LIP_SHAPE = "original"  # 唇の形を変える plump 等や morphology は N-G02 に従い使わない
+HIGHLIGHTER_PATTERN = "SquareFace3"
+
+LIP_COLOR = "#D9737A"
+CONCEALER_COLOR = "#F2D6C4"
+HIGHLIGHTER_COLOR = "#FFF4EC"
+
+
+def _pct(value: float) -> int:
+    return max(0, min(100, int(round(value))))
+
+
+def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
+    placement = plan.get("blush_placement", "horizontal_low")
+    lip_over = float(plan.get("lip_over_ratio", 1.0))
+    under_eye = float(plan.get("eyeshadow_lower_intensity", 0.0))
+
+    effects: List[Dict[str, Any]] = [
+        {
+            "category": "blush",
+            "pattern": {"name": BLUSH_PATTERNS.get(placement, BLUSH_PATTERNS["horizontal_low"])},
+            "palettes": [{"color": plan.get("blush_color", "#FF8C7A"), "texture": "matte", "colorIntensity": 55}],
+        },
+        {
+            "category": "lip_liner",
+            "pattern": {"name": LIP_LINER_OVER_UPPER if lip_over > 1.0 else LIP_LINER_NATURAL},
+            "palettes": [{
+                "color": LIP_COLOR,
+                "texture": "matte",
+                "colorIntensity": 60,
+                "thickness": _pct(30 + (lip_over - 1.0) / 0.3 * 50),
+                "smoothness": 60,
+            }],
+        },
+        {
+            "category": "lip_color",
+            "shape": {"name": LIP_SHAPE},
+            "style": {"type": "full"},
+            "palettes": [{"color": LIP_COLOR, "texture": "sheer", "colorIntensity": 60, "transparencyIntensity": 40}],
+        },
+    ]
+
+    if under_eye > 0:
+        effects.append({
+            "category": "concealer",
+            "palettes": [{
+                "color": CONCEALER_COLOR,
+                "colorIntensity": _pct(under_eye * 0.3),
+                "colorUnderEyeIntensity": _pct(under_eye),
+                "coverageLevel": 40,
+            }],
+        })
+        effects.append({
+            "category": "highlighter",
+            "pattern": {"name": HIGHLIGHTER_PATTERN},
+            "palettes": [{
+                "color": HIGHLIGHTER_COLOR,
+                "glowIntensity": _pct(under_eye * 0.5),
+                "shimmerIntensity": _pct(under_eye * 0.4),
+                "shimmerDensity": 40,
+                "shimmerSize": 30,
+                "colorIntensity": _pct(under_eye * 0.6),
+            }],
+        })
+    return effects

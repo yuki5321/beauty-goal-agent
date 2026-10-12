@@ -2,12 +2,12 @@ import asyncio
 import base64
 import json
 import uuid
-from typing import AsyncGenerator, Dict, Any, List
+from typing import AsyncGenerator, Dict, Any, List, Optional
 from app.config import settings
 from app.governance.guardrail import SafetyGuardrail
 from app.governance.memory_pipe import memory_pipe
 from app.observability.logger import agent_logger
-from app.mcp.client import youcam_client
+from app.mcp.client import TryOnResult, youcam_client
 from app.agent import gemini
 from app.agent.evaluator import critic_agent, RATIO_TOLERANCE
 from app.agent.planner import styling_planner
@@ -59,9 +59,9 @@ class BeautyGoalOrchestrator:
         yield self._sse_pack({
             "type": "step",
             "step_name": "OBSERVE",
-            "title": "顔パーツ比率の客観抽出 (YouCam MCP)",
+            "title": "顔パーツ比率の客観抽出 (YouCam API)",
             "thought": "YouCam APIで顔の生体ランドマークと三分割比率（上顔面:中顔面:下顔面）を計測します。",
-            "action": "mcp.call_tool('youcam-beauty.analyze_face')",
+            "action": "simulator.analyze_face()" if youcam_client.use_mock else "youcam.face_attr_analysis(['horizontalThird'])",
             "status": "RUNNING"
         })
         await asyncio.sleep(0.5)
@@ -72,7 +72,12 @@ class BeautyGoalOrchestrator:
         proportions = dict(face_analysis.get("proportions") or {})
         proportions["mid_face_ratio"] = mid_ratio
 
-        if face_analysis.get("source") == "simulator_default_landmarks":
+        if face_analysis.get("source") == "youcam":
+            upper, mid, lower = face_analysis["horizontal_third"]
+            observation_note = f"（YouCam顔分析: 三分割 上/中/下 = {upper}/{mid}/{lower}%）"
+        elif face_analysis.get("fallback_reason"):
+            observation_note = f"（YouCam顔分析に失敗（{face_analysis['fallback_reason']}）→ シミュレータの標準ランドマーク値で代替）"
+        elif face_analysis.get("source") == "simulator_default_landmarks":
             observation_note = "（シミュレータ: 顔検出なしの標準ランドマーク値）"
         else:
             observation_note = ""
@@ -142,18 +147,13 @@ class BeautyGoalOrchestrator:
             # ガバナンス検査 (N-G02: 骨格変形・過剰加工の検知)
             gov_audit = SafetyGuardrail.audit_governance_status(goal, "", "simulate_makeup", current_plan)
 
-            # Step 4: ACT (YouCam MCP ツール呼び出し)
-            yield self._sse_pack({
-                "type": "step",
-                "step_name": "ACT",
-                "iteration": iteration,
-                "title": f"バーチャル試着シミュレーション (YouCam MCP)",
-                "thought": "YouCam MCPの各ツール（apply_blush, apply_lipstick, apply_eye_makeup, apply_bangs_filter）を自律順次呼び出し中。",
-                "action": "mcp.call_tool(['youcam-beauty.simulate_makeup', 'youcam-beauty.simulate_hair_bangs'])"
-            })
-
-            # 画像合成
-            simulated_bytes = await self._simulate(image_bytes, current_plan)
+            # Step 4: ACT (YouCam API 試着)
+            yield self._act_step(iteration)
+            tryon = await youcam_client.simulate_makeup_and_hair(image_bytes, current_plan)
+            act_note = self._act_observation(tryon)
+            if act_note:
+                yield self._sse_pack(act_note)
+            simulated_bytes = tryon.image_bytes
             simulated_b64 = base64.b64encode(simulated_bytes).decode("utf-8")
 
             # Step 5: EVALUATE (Gemini Visual Critic)
@@ -173,7 +173,8 @@ class BeautyGoalOrchestrator:
                 goal=goal,
                 current_parameters=current_plan,
                 iteration=iteration,
-                base_ratio=mid_ratio
+                base_ratio=mid_ratio,
+                bangs_rendered=tryon.bangs_rendered
             )
             score = eval_res.get("goal_similarity_score", 0)
             is_goal_met = eval_res.get("is_goal_met", False)
@@ -186,7 +187,7 @@ class BeautyGoalOrchestrator:
                 iteration_count=iteration,
                 goal=goal,
                 thought_process=f"Plan {plan_label}({score}%): {critic_feedback}",
-                mcp_tools_called=["youcam-beauty.simulate_makeup", "youcam-beauty.simulate_hair_bangs"],
+                mcp_tools_called=["youcam.makeup_vto"] if tryon.source == "youcam" else ["simulator.render_tryon"],
                 evaluation_score=score,
                 status="CONVERGED" if is_goal_met else "REPLANNING",
                 governance_check=gov_audit
@@ -301,11 +302,7 @@ class BeautyGoalOrchestrator:
             "ratio_analysis": self._ratio_analysis(goal, mid_ratio, best_result["plan"]),
             "recipe": recipe,
             "audit_certificate": audit_cert,
-            "governance_status": {
-                "body_dysmorphic_risk": "SAFE",
-                "lookism_free_guarantee": True,
-                "biometric_purged_on_close": True
-            }
+            "governance_status": self._governance_status()
         })
 
     @staticmethod
@@ -422,15 +419,59 @@ class BeautyGoalOrchestrator:
             },
         ]
 
-    async def _simulate(self, image_bytes: bytes, plan: Dict[str, Any]) -> bytes:
-        return await youcam_client.simulate_makeup_and_hair(
-            image_bytes=image_bytes,
-            blush_placement=plan.get("blush_placement", "horizontal_low"),
-            blush_color=plan.get("blush_color", "#FF8C7A"),
-            lip_over_ratio=float(plan.get("lip_over_ratio", 1.0)),
-            eyeshadow_lower_intensity=float(plan.get("eyeshadow_lower_intensity", 0.0)),
-            bangs_style=plan.get("bangs_style", "none")
-        )
+    def _act_step(self, iteration: Optional[int] = None, title: str = "バーチャル試着シミュレーション") -> str:
+        event: Dict[str, Any] = {"type": "step", "step_name": "ACT"}
+        if iteration is not None:
+            event["iteration"] = iteration
+        if youcam_client.use_mock:
+            event.update({
+                "title": f"{title} (Simulator)",
+                "thought": "YouCam APIキー未設定のため、内蔵シミュレータでチーク・リップ・涙袋・前髪を合成します。",
+                "action": "simulator.render_tryon()",
+            })
+        else:
+            event.update({
+                "title": f"{title} (YouCam API)",
+                "thought": "YouCam Makeup VTO API にチーク・リップライナー・リップ・涙袋（コンシーラー/ハイライト）を依頼し、完了をポーリング中。前髪の実API試着は第2段階のため画像には未反映です。",
+                "action": "youcam.makeup_vto()",
+            })
+        return self._sse_pack(event)
+
+    @staticmethod
+    def _act_observation(tryon: TryOnResult) -> Optional[Dict[str, Any]]:
+        if tryon.fallback_reason:
+            text = f"YouCam試着に失敗（{tryon.fallback_reason}）→ シミュレータで代替合成しました。"
+        elif tryon.source == "youcam":
+            text = "YouCam APIで試着画像を生成しました（前髪は未反映）。"
+        else:
+            return None
+        return {"type": "observation", "step_name": "ACT", "observation": text}
+
+    @staticmethod
+    def _governance_status() -> Dict[str, Any]:
+        return {
+            "body_dysmorphic_risk": "SAFE",
+            "lookism_free_guarantee": True,
+            "biometric_purged_on_close": True,
+            "external_processor": youcam_client.external_processor
+        }
+
+    @staticmethod
+    def _biometric_data_safety() -> Dict[str, Any]:
+        base = {
+            "rule": "N-G03 (生体顔写真データ最小化と即時破棄)",
+            "disk_db_persistence": "FORBIDDEN & NONE（アプリ側）",
+            "ttl_purge_policy": "アプリ側: セッション終了時 / 300s TTL で破棄",
+            "status": "VERIFIED"
+        }
+        if youcam_client.external_processor:
+            base.update({
+                "storage_type": "Cloud Run RAM + YouCam API（Perfect Corp）へ送信して処理",
+                "external_processing": "YouCam API: 試着・顔分析のため写真を送信。処理結果は Perfect Corp 側で最大24時間保持",
+            })
+        else:
+            base["storage_type"] = "Cloud Run RAM (Volatile Memory Only)"
+        return base
 
     def _generate_audit_certificate(self, session_id: str, loops: int, plan: Dict[str, Any], score: int, exit_status: str = "CONVERGED") -> Dict[str, Any]:
         """審査員向け: Responsible AI / ガバナンス厳格遵守の監査証明書データを生成"""
@@ -453,13 +494,7 @@ class BeautyGoalOrchestrator:
                 },
                 "status": "ENFORCED"
             },
-            "biometric_data_safety": {
-                "rule": "N-G03 (生体顔写真データ最小化と即時破棄)",
-                "storage_type": "Cloud Run RAM (Volatile Memory Only)",
-                "disk_db_persistence": "FORBIDDEN & NONE",
-                "ttl_purge_policy": "Session Close / 300s TTL (Zero Trace)",
-                "status": "VERIFIED"
-            },
+            "biometric_data_safety": self._biometric_data_safety(),
             "agent_circuit_breaker": {
                 "rule": "N-G04 (暴走防止サーキットブレーカー)",
                 "max_loop_limit": settings.MAX_REPLAN_ITERATIONS,
@@ -765,16 +800,13 @@ class BeautyGoalOrchestrator:
         })
         await asyncio.sleep(0.5)
 
-        # Step: ACT (YouCam MCP 試着実行)
-        yield self._sse_pack({
-            "type": "step",
-            "step_name": "ACT",
-            "title": "微調整シミュレーション実行 (YouCam MCP)",
-            "thought": "ユーザーの好みを反映した新パラメータで合成画像を再生成中...",
-            "action": "mcp.call_tool(['youcam-beauty.simulate_makeup', 'youcam-beauty.simulate_hair_bangs'])"
-        })
-
-        simulated_bytes = await self._simulate(image_bytes, adjusted_plan)
+        # Step: ACT (YouCam API 試着)
+        yield self._act_step(title="微調整シミュレーション実行")
+        tryon = await youcam_client.simulate_makeup_and_hair(image_bytes, adjusted_plan)
+        act_note = self._act_observation(tryon)
+        if act_note:
+            yield self._sse_pack(act_note)
+        simulated_bytes = tryon.image_bytes
         simulated_b64 = base64.b64encode(simulated_bytes).decode("utf-8")
 
         # Step: EVALUATE (Gemini Visual Critic)
@@ -794,7 +826,8 @@ class BeautyGoalOrchestrator:
             goal=goal,
             current_parameters=adjusted_plan,
             iteration=FEEDBACK_ITERATION,
-            base_ratio=base_ratio
+            base_ratio=base_ratio,
+            bangs_rendered=tryon.bangs_rendered
         )
         eval_score = eval_res.get("goal_similarity_score", 0)
         is_goal_met = eval_score >= settings.SCORE_CONVERGENCE_THRESHOLD
@@ -840,11 +873,7 @@ class BeautyGoalOrchestrator:
             "ratio_analysis": self._ratio_analysis(goal, base_ratio, adjusted_plan),
             "recipe": recipe,
             "audit_certificate": audit_cert,
-            "governance_status": {
-                "body_dysmorphic_risk": "SAFE",
-                "lookism_free_guarantee": True,
-                "biometric_purged_on_close": True
-            }
+            "governance_status": self._governance_status()
         })
 
     def _sse_pack(self, data: Dict[str, Any]) -> str:

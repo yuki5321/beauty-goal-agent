@@ -58,7 +58,7 @@ export const Header = ({ onOpenGovernance }: Props) => {
               title="クリックしてガバナンス監査証明書を表示"
             >
               <EyeOff className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-              <span>RAM限定・生体データ即時破棄</span>
+              <span>生体データ最小化・保存なし</span>
             </button>
           </div>
         </div>

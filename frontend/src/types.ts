@@ -52,6 +52,7 @@ export interface GovernanceAuditCertificate {
     storage_type: string;
     disk_db_persistence: string;
     ttl_purge_policy: string;
+    external_processing?: string;
     status: string;
   };
   agent_circuit_breaker: {
@@ -100,6 +101,7 @@ export interface AgentStepEvent {
     body_dysmorphic_risk: string;
     lookism_free_guarantee: boolean;
     biometric_purged_on_close: boolean;
+    external_processor?: string | null;
   };
   // Multi-Agent Council Debate fields
   speaker?: "optics" | "stylist" | "governance";
