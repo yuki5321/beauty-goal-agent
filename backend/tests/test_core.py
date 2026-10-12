@@ -432,3 +432,101 @@ def test_youcam_effects_mapping_is_within_limits():
         lip_color = next(e for e in effects if e["category"] == "lip_color")
         assert "morphology" not in lip_color  # N-G02: 唇の形状変形は使わない
         assert any(e["category"] == "concealer" for e in effects) == (under_eye > 0)
+
+
+# ---- YouCam 前髪（hair-bang）→ メイク（makeup-vto）の連携 ----
+
+def _bang_transport(calls, bang_error=None):
+    import json as _json
+    import httpx
+
+    def handler(request: httpx.Request):
+        path = request.url.path
+        if request.method == "POST" and path == "/s2s/v2.0/file":
+            calls.append(("upload", None))
+            return httpx.Response(200, json={"status": 200, "data": {"files": [{
+                "file_id": "fid-1", "requests": [{"url": "https://upload.example.com/put", "method": "PUT", "headers": {}}]}]}})
+        if request.method == "PUT":
+            return httpx.Response(200)
+        if request.method == "POST" and path.startswith("/s2s/v2.0/task/"):
+            feature = path.split("/")[4]
+            calls.append((feature, _json.loads(request.content)))
+            return httpx.Response(200, json={"status": 200, "data": {"task_id": f"t-{feature}"}})
+        if request.method == "GET" and path.startswith("/s2s/v2.0/task/"):
+            feature = path.split("/")[4]
+            if feature == "hair-bang" and bang_error:
+                data = {"task_status": "error", "error": bang_error}
+            else:
+                url = "https://result.example.com/bang.jpg" if feature == "hair-bang" else "https://result.example.com/makeup.jpg"
+                data = {"task_status": "success", "results": {"url": url}}
+            return httpx.Response(200, json={"status": 200, "data": data})
+        if request.method == "GET" and request.url.host == "result.example.com":
+            return httpx.Response(200, content=b"FINAL")
+        return httpx.Response(404)
+
+    return httpx.MockTransport(handler)
+
+_BANG_PLAN = {"blush_placement": "horizontal_low", "lip_over_ratio": 1.1,
+              "eyeshadow_lower_intensity": 55.0, "bangs_style": "see_through"}
+
+def test_youcam_bangs_then_makeup_uses_bang_result_url(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", '{"see_through": "tpl-see-through"}')
+    calls = []
+    client = _youcam_client(_bang_transport(calls))
+
+    result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), _BANG_PLAN))
+    assert result.source == "youcam" and result.bangs_rendered is True and result.bangs_fallback_reason is None
+    tasks = [(name, body) for name, body in calls if name != "upload"]
+    assert [name for name, _ in tasks] == ["hair-bang", "makeup-vto"]
+    assert tasks[0][1]["template_id"] == "tpl-see-through"
+    makeup_body = tasks[1][1]
+    assert makeup_body["src_file_url"] == "https://result.example.com/bang.jpg"
+    assert "src_file_id" not in makeup_body
+
+    # 同じ画像・同じ前髪スタイルの2回目は hair-bang を再実行しない（1ユニットの重複消費を防ぐ）
+    calls.clear()
+    asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), {**_BANG_PLAN, "lip_over_ratio": 1.15}))
+    assert [name for name, _ in calls] == ["makeup-vto"]
+
+def test_youcam_bangs_failure_continues_with_makeup_only(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", '{"see_through": "tpl-see-through"}')
+    calls = []
+    client = _youcam_client(_bang_transport(calls, bang_error="error_no_shoulder"))
+
+    result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), _BANG_PLAN))
+    assert result.source == "youcam"
+    assert result.bangs_rendered is False and result.bangs_fallback_reason == "error_no_shoulder"
+    makeup_body = next(body for name, body in calls if name == "makeup-vto")
+    assert makeup_body["src_file_id"] == "fid-1" and "src_file_url" not in makeup_body
+
+def test_youcam_bangs_none_and_unconfigured(monkeypatch):
+    import asyncio
+    monkeypatch.delenv("YOUCAM_BANG_TEMPLATES", raising=False)
+    calls = []
+    client = _youcam_client(_bang_transport(calls))
+
+    none_result = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), {**_BANG_PLAN, "bangs_style": "none"}))
+    assert none_result.bangs_rendered is True and none_result.bangs_fallback_reason is None
+
+    unconfigured = asyncio.run(client.simulate_makeup_and_hair(_jpeg_bytes(), _BANG_PLAN))
+    assert unconfigured.bangs_rendered is False
+    assert unconfigured.bangs_fallback_reason == "template_not_configured"
+    assert "hair-bang" not in [name for name, _ in calls]
+
+def test_bang_template_env_override(monkeypatch):
+    from app.mcp.youcam_mapping import bang_template_for
+    monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", '{"curtain": "tpl-curtain"}')
+    assert bang_template_for("curtain") == "tpl-curtain"
+    assert bang_template_for("none") is None
+    monkeypatch.setenv("YOUCAM_BANG_TEMPLATES", "not-json")
+    assert bang_template_for("curtain") is None  # 不正なJSONは無視（既定値は未設定）
+
+def test_act_observation_reports_bangs_outcome():
+    from app.agent.orchestrator import BeautyGoalOrchestrator
+    from app.mcp.client import TryOnResult
+    obs = BeautyGoalOrchestrator._act_observation
+    assert "前髪（see_through）を適用" in obs(TryOnResult(b"", "youcam", bangs_style="see_through"))["observation"]
+    failed = obs(TryOnResult(b"", "youcam", bangs_rendered=False, bangs_style="see_through", bangs_fallback_reason="error_no_shoulder"))
+    assert "error_no_shoulder" in failed["observation"]

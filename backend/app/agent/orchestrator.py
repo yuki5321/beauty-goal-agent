@@ -434,8 +434,8 @@ class BeautyGoalOrchestrator:
         else:
             event.update({
                 "title": f"{title} (YouCam API)",
-                "thought": "YouCam Makeup VTO API にチーク・リップライナー・リップ・涙袋（コンシーラー/ハイライト）を依頼し、完了をポーリング中。前髪の実API試着は第2段階のため画像には未反映です。",
-                "action": "youcam.makeup_vto()",
+                "thought": "YouCam API に 前髪（Hair Bang）→ メイク（Makeup VTO: チーク・リップライナー・リップ・涙袋）の順で試着を依頼し、完了をポーリング中。",
+                "action": "youcam.hair_bang() → youcam.makeup_vto()",
             })
         return self._sse_pack(event)
 
@@ -444,7 +444,15 @@ class BeautyGoalOrchestrator:
         if tryon.fallback_reason:
             text = f"YouCam試着に失敗（{tryon.fallback_reason}）→ シミュレータで代替合成しました。"
         elif tryon.source == "youcam":
-            text = "YouCam APIで試着画像を生成しました（前髪は未反映）。"
+            if tryon.bangs_style == "none":
+                bangs = "前髪: 指定なし"
+            elif tryon.bangs_rendered:
+                bangs = f"前髪（{tryon.bangs_style}）を適用"
+            elif tryon.bangs_fallback_reason == "template_not_configured":
+                bangs = f"前髪（{tryon.bangs_style}）はテンプレート未設定のため未反映"
+            else:
+                bangs = f"前髪の試着に失敗（{tryon.bangs_fallback_reason}）→ 前髪なしで試着"
+            text = f"YouCam APIで試着画像を生成しました（{bangs}）。"
         else:
             return None
         return {"type": "observation", "step_name": "ACT", "observation": text}

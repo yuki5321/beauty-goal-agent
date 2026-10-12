@@ -9,7 +9,9 @@
 チークはカタログの形状タグで選んでいる（backend/scripts/youcam_smoke.py --catalog でタグ付き一覧を表示できる）。
 horizontal_low の 1color1 は実APIの試着結果で見た目を確認済み。
 """
-from typing import Any, Dict, List
+import json
+import os
+from typing import Any, Dict, List, Optional
 
 BLUSH_PATTERNS = {
     "horizontal_low": "1color1",   # tag: Oblong（横長）
@@ -20,6 +22,15 @@ LIP_LINER_NATURAL = "Natural1"
 LIP_LINER_OVER_UPPER = "LargerUpper1"
 LIP_SHAPE = "original"  # 唇の形を変える plump 等や morphology は N-G02 に従い使わない
 HIGHLIGHTER_PATTERN = "SquareFace3"
+
+# 前髪スタイル → YouCam hair-bang テンプレートID。
+# 一覧は backend/scripts/youcam_smoke.py --bang-templates で確認できる。
+# 環境変数 YOUCAM_BANG_TEMPLATES（JSON, 例: {"see_through": "xxx"}）で上書き可能。
+BANG_TEMPLATES: Dict[str, str] = {
+    "see_through": "",
+    "curtain": "",
+    "full_straight": "",
+}
 
 LIP_COLOR = "#D9737A"
 CONCEALER_COLOR = "#F2D6C4"
@@ -83,3 +94,17 @@ def plan_to_effects(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
             }],
         })
     return effects
+
+
+def bang_template_for(style: str) -> Optional[str]:
+    """前髪スタイルに対応するテンプレートID。none・未設定は None"""
+    if not style or style == "none":
+        return None
+    templates = dict(BANG_TEMPLATES)
+    override = os.getenv("YOUCAM_BANG_TEMPLATES", "")
+    if override:
+        try:
+            templates.update({k: str(v) for k, v in json.loads(override).items()})
+        except (ValueError, AttributeError):
+            pass
+    return templates.get(style) or None
