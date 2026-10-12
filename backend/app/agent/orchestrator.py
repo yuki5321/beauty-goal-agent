@@ -471,7 +471,7 @@ class BeautyGoalOrchestrator:
         eyeshadow = plan.get("eyeshadow_lower_intensity", 60)
         bangs = plan.get("bangs_style", "see_through")
 
-        # 確実に実在・流通しているグラウンディング済みコスメデータベース（フォールバック兼用）
+        # 編集部選定の候補コスメ（未検証）。Google Search Groundingで確認できたものだけ grounding_verified=True にする
         curated_recipes = [
             {
                 "category": "チーク（Blush）",
@@ -485,7 +485,7 @@ class BeautyGoalOrchestrator:
                         "shade": "21 タンジェリンティー",
                         "type": "プチプラ",
                         "price": "¥638",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.canmake.com/item/detail/64"
                     },
                     {
@@ -494,7 +494,7 @@ class BeautyGoalOrchestrator:
                         "shade": "01 フォギーローズ",
                         "type": "プチプラ",
                         "price": "¥550",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.cezanne.co.jp/lineup/cheek/item_016.html"
                     },
                     {
@@ -503,7 +503,7 @@ class BeautyGoalOrchestrator:
                         "shade": "02799 ORGASM",
                         "type": "デパコス",
                         "price": "¥4,840",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.narscosmetics.jp"
                     }
                 ]
@@ -520,7 +520,7 @@ class BeautyGoalOrchestrator:
                         "shade": "03 陽炎",
                         "type": "プチプラ",
                         "price": "¥1,540",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.nomorerules.net/pickup/lip_monster/"
                     },
                     {
@@ -529,7 +529,7 @@ class BeautyGoalOrchestrator:
                         "shade": "01 ピオニーバレエ",
                         "type": "韓国コスメ",
                         "price": "¥1,320",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://romand.jp"
                     },
                     {
@@ -538,7 +538,7 @@ class BeautyGoalOrchestrator:
                         "shade": "001 ピンク",
                         "type": "デパコス",
                         "price": "¥4,730",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.dior.com/ja_jp/beauty"
                     }
                 ]
@@ -555,7 +555,7 @@ class BeautyGoalOrchestrator:
                         "shade": "20 影用グレージュ",
                         "type": "プチプラ",
                         "price": "¥660",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.cezanne.co.jp"
                     },
                     {
@@ -564,7 +564,7 @@ class BeautyGoalOrchestrator:
                         "shade": "01 イエローベージュ",
                         "type": "プチプラ",
                         "price": "¥715",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.canmake.com"
                     },
                     {
@@ -573,7 +573,7 @@ class BeautyGoalOrchestrator:
                         "shade": "01 リコッタムース",
                         "type": "人気コスメ",
                         "price": "¥1,650",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://wonjungyobeauty.jp"
                     }
                 ]
@@ -590,7 +590,7 @@ class BeautyGoalOrchestrator:
                         "shade": "クリア",
                         "type": "定番スタイリング",
                         "price": "¥1,100",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://www.utena.co.jp/matomage/"
                     },
                     {
@@ -599,7 +599,7 @@ class BeautyGoalOrchestrator:
                         "shade": "オーガニックシトラス",
                         "type": "定番スタイリング",
                         "price": "¥2,178",
-                        "grounding_verified": True,
+                        "grounding_verified": False,
                         "source_url": "https://theproduct.jp"
                     }
                 ]
@@ -617,11 +617,15 @@ class BeautyGoalOrchestrator:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
             grounding_tool = types.Tool(google_search=types.GoogleSearch())
 
+            candidates = " / ".join(
+                f"{p['brand']} {p['name']}" for r in curated_recipes for p in r["recommended_products"]
+            )
             search_prompt = (
                 f"目標: {goal}。錯視メイク（チーク: {plan.get('blush_placement')}, "
                 f"オーバーリップ: x{lip_over:.2f}, 涙袋: {int(eyeshadow)}%）に合う、"
                 "日本国内のドラッグストアやバラエティショップで現在市販されている人気コスメ（キャンメイク、KATE、セザンヌ等）の"
                 "正確な商品名・実勢価格・品番カラーを最新のGoogle検索で確認してください。"
+                f"候補: {candidates}"
             )
 
             loop = asyncio.get_event_loop()
@@ -637,15 +641,31 @@ class BeautyGoalOrchestrator:
                 )
             )
 
-            if res and hasattr(res, "candidates") and res.candidates:
-                meta = getattr(res.candidates[0], "grounding_metadata", None)
-                if meta and hasattr(meta, "grounding_chunks") and meta.grounding_chunks:
-                    # Groundingが正常に機能したことを記録
-                    agent_logger.info(f"Google Search Grounding successfully verified cosmetics with {len(meta.grounding_chunks)} sources.")
+            self._apply_grounding_result(curated_recipes, res)
         except Exception as e:
-            agent_logger.info(f"Google Search Grounding note: {e}, using verified curated items.")
+            agent_logger.info(f"Google Search Grounding failed, returning unverified curated items: {e}")
 
         return curated_recipes
+
+    @staticmethod
+    def _apply_grounding_result(recipes: List[Dict[str, Any]], res: Any) -> None:
+        """検索グラウンディング済みの回答で言及された商品のみ grounding_verified=True にする"""
+        if not res or not getattr(res, "candidates", None):
+            return
+        meta = getattr(res.candidates[0], "grounding_metadata", None)
+        chunks = getattr(meta, "grounding_chunks", None) if meta else None
+        text = getattr(res, "text", None) or ""
+        if not chunks or not text:
+            agent_logger.info("Google Search Grounding returned no sources; products remain unverified.")
+            return
+
+        verified = 0
+        for recipe in recipes:
+            for product in recipe["recommended_products"]:
+                if product["brand"] in text and product["name"] in text:
+                    product["grounding_verified"] = True
+                    verified += 1
+        agent_logger.info(f"Google Search Grounding: {verified} products confirmed with {len(chunks)} sources.")
 
     async def run_feedback_replan(
         self,

@@ -162,3 +162,30 @@ def test_circuit_breaker_reported_in_audit(monkeypatch):
     for e in events:
         if e["type"] == "evaluation_result":
             assert 1.0 <= e["plan"]["lip_over_ratio"] <= 1.3
+
+def test_grounding_marks_only_products_found_in_search_answer():
+    import asyncio
+    from types import SimpleNamespace
+    from app.agent.orchestrator import BeautyGoalOrchestrator
+    from app.config import settings
+
+    orch = BeautyGoalOrchestrator()
+    plan = {"blush_placement": "horizontal_low", "lip_over_ratio": 1.1,
+            "eyeshadow_lower_intensity": 50.0, "bangs_style": "see_through"}
+
+    # APIキー未設定時は全商品が未検証
+    if not settings.GEMINI_API_KEY:
+        recipes = asyncio.run(orch._generate_makeup_recipe(plan))
+        assert all(not p["grounding_verified"] for r in recipes for p in r["recommended_products"])
+
+    recipes = [{"recommended_products": [
+        {"brand": "KATE", "name": "リップモンスター", "grounding_verified": False},
+        {"brand": "NARS", "name": "アフターグロー リキッドブラッシュ", "grounding_verified": False},
+    ]}]
+    res = SimpleNamespace(
+        text="KATE リップモンスター 03 陽炎は現在も販売中です。",
+        candidates=[SimpleNamespace(grounding_metadata=SimpleNamespace(grounding_chunks=[object()]))],
+    )
+    BeautyGoalOrchestrator._apply_grounding_result(recipes, res)
+    flags = [p["grounding_verified"] for p in recipes[0]["recommended_products"]]
+    assert flags == [True, False]
