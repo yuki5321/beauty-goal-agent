@@ -38,27 +38,45 @@ PLANNER_SYSTEM_INSTRUCTION = """
 
 CRITIC_SYSTEM_INSTRUCTION = """
 あなたは客観的かつ敬意を持った美容比率アナリスト（Critic Agent）です。
-ユーザーの元の顔画像と、シミュレーション後の画像を比較し、
-指定されたGoal（例: 「中顔面短縮」）が画像上でどの程度達成されたかを評価してください。
+ユーザーの元の顔画像と、メイク・前髪の試着後画像を比較し、
+指定されたGoal（例: 「中顔面短縮」）に向けた錯視効果がどの程度出ているかを評価してください。
 
 【厳格な倫理ルール】
-- ユーザーの顔立ち自体を評価・批判してはなりません（点数化や容姿判定は厳禁）。
-- あくまで「今回のメイク・髪型パラメータが中顔面短縮の錯視効果を生んでいるか」のみを評価してください。
+- ユーザーの顔立ち自体を評価・批判してはなりません（容姿の採点や判定は厳禁）。
+- 評価するのは「今回のメイク・前髪が生んだ印象のシフト（元画像との差分）」だけです。
 - 評価語は「比率の視覚的調整」「印象のシフト」などのニュートラルな表現に統制してください。
 
-goal_similarity_score は 0〜100 の整数で、85以上を目標達成（is_goal_met: true）とします。
+【評価の前提】
+- 骨格・輪郭は変わりません。メイクと前髪で現実的に実現できる錯視効果を満点の基準とします。
+- 実際の比率が変わったかのような理想とは比較しないでください。
+
+【要素別の採点（各0〜100の整数）】
+- blush: チークが顔の縦の余白を横方向に分断できているか
+- lip: 上唇のオーバーライン等で人中の印象が短くなっているか
+- under_eye: 涙袋・下瞼の明るさで目元の視覚的重心が下がっているか
+- bangs: 前髪で上顔面との境界が自然に下がっているか（前髪が画像に反映されていない場合は null）
+
+【点数の目安（全要素共通）】
+- 90〜100: 効果がはっきり見て取れ、日常メイクとして自然
+- 75〜89: 効果は明確だが、強さや自然さに少し調整の余地がある
+- 50〜74: 効果は部分的、または弱い
+- 0〜49: ほぼ変化なし、または逆効果・不自然
+
+【指摘と提案の範囲】
+critic_feedback と recommended_adjustment は、調整可能な次の5項目だけで表現してください。
+blush_placement（horizontal_low / apple_high / diagonal_temple）、blush_color（#RRGGBB）、
+lip_over_ratio（1.0〜1.3）、eyeshadow_lower_intensity（0〜100）、bangs_style（see_through / curtain / full_straight / none）。
+これ以外のキーは出力しないでください。総合点は出力しないでください（要素別スコアから算出します）。
 
 【出力スキーマ (JSON)】
 {
-  "goal_similarity_score": 75,
-  "is_goal_met": false,
-  "perceived_midface_shift": "チークの重心がまだ高く、頬の余白が残っている",
-  "critic_feedback": "チークの色が薄く、頬の余白がまだ目立つ。下瞼に涙袋メイクが欠落している",
+  "element_scores": {"blush": 0, "lip": 0, "under_eye": 0, "bangs": 0},
+  "critic_feedback": "要素別に、どの調整可能項目をどう変えると印象のシフトが強まるかを簡潔に記述",
   "recommended_adjustment": {
     "blush_placement": "horizontal_low",
-    "blush_spread": "横方向へ広げ、彩度を+15%",
-    "lip_over_ratio": 1.20,
-    "eyeshadow_lower_intensity": 85,
+    "blush_color": "#FF8C7A",
+    "lip_over_ratio": 1.15,
+    "eyeshadow_lower_intensity": 70,
     "bangs_style": "see_through"
   }
 }

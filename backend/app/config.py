@@ -17,6 +17,6 @@ class Settings(BaseModel):
         o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()
     ]
     MAX_REPLAN_ITERATIONS: int = 3
-    SCORE_CONVERGENCE_THRESHOLD: int = 85
+    SCORE_CONVERGENCE_THRESHOLD: int = int(os.getenv("SCORE_CONVERGENCE_THRESHOLD", "85"))
 
 settings = Settings()

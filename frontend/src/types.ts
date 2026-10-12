@@ -96,6 +96,7 @@ export interface AgentStepEvent {
   simulated_image?: string;
   ratio_analysis?: RatioAnalysis;
   bangs_rendered?: boolean;
+  element_scores?: ElementScores;
   recipe?: MakeupRecipeItem[];
   audit_certificate?: GovernanceAuditCertificate;
   governance_status?: {
@@ -119,4 +120,12 @@ export interface RatioAnalysis {
   observed_mid_ratio: number;
   perceived_mid_ratio: number;
   ideal_mid_ratio: number;
+}
+
+/** Critic の要素別スコア（0〜100）。前髪は画像に反映されていない場合は含まれない */
+export interface ElementScores {
+  blush?: number;
+  lip?: number;
+  under_eye?: number;
+  bangs?: number;
 }

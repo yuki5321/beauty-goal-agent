@@ -7,7 +7,7 @@ import { BeforeAfterSlider } from "./components/BeforeAfterSlider";
 import { RecipeCard } from "./components/RecipeCard";
 import { GovernanceModal } from "./components/GovernanceModal";
 import { InteractiveFeedbackChat } from "./components/InteractiveFeedbackChat";
-import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan, RatioAnalysis } from "./types";
+import type { AgentStepEvent, MakeupRecipeItem, GovernanceAuditCertificate, StylingPlan, RatioAnalysis, ElementScores } from "./types";
 import { Play, RotateCcw, Sparkles, ShieldAlert, ShieldCheck } from "lucide-react";
 
 export function App() {
@@ -33,6 +33,7 @@ export function App() {
   const [ratioAnalysis, setRatioAnalysis] = useState<RatioAnalysis | null>(null);
   const [finalPlan, setFinalPlan] = useState<StylingPlan | null>(null);
   const [bangsRendered, setBangsRendered] = useState<boolean>(true);
+  const [elementScores, setElementScores] = useState<ElementScores | null>(null);
   const [isGovernanceOpen, setIsGovernanceOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -225,6 +226,7 @@ export function App() {
               setRatioAnalysis(eventData.ratio_analysis ?? null);
               setFinalPlan(eventData.plan ?? null);
               setBangsRendered(eventData.bangs_rendered ?? true);
+              setElementScores(eventData.element_scores ?? null);
               if (eventData.final_score !== undefined) {
                 setCurrentScore(eventData.final_score);
               }
@@ -394,6 +396,7 @@ export function App() {
                 ratioAnalysis={ratioAnalysis}
                 plan={finalPlan}
                 bangsRendered={bangsRendered}
+                elementScores={elementScores}
               />
             ) : (
               <div className="h-[520px] rounded-2xl border border-slate-800/80 bg-slate-900/30 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-3">

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, type TouchEvent, type MouseEvent } from "react";
-import type { RatioAnalysis, StylingPlan } from "../types";
+import type { ElementScores, RatioAnalysis, StylingPlan } from "../types";
 import { Sparkles, ArrowLeftRight, Activity, SunMedium, Lightbulb } from "lucide-react";
 
 interface Props {
@@ -11,7 +11,16 @@ interface Props {
   plan?: StylingPlan | null;
   /** 前髪が試着画像に描画されているか（YouCam API 使用時は未反映） */
   bangsRendered?: boolean;
+  /** Critic の要素別スコア（総合点はこの重み付き平均） */
+  elementScores?: ElementScores | null;
 }
+
+const ELEMENT_LABELS: [keyof ElementScores, string][] = [
+  ["blush", "チーク"],
+  ["lip", "リップ"],
+  ["under_eye", "涙袋"],
+  ["bangs", "前髪"],
+];
 
 const BLUSH_LABELS: Record<string, string> = {
   horizontal_low: "小鼻下・横長",
@@ -85,6 +94,7 @@ export const BeforeAfterSlider = ({
   ratioAnalysis = null,
   plan = null,
   bangsRendered = true,
+  elementScores = null,
 }: Props) => {
   const [sliderPos, setSliderPos] = useState<number>(50);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -210,6 +220,16 @@ export const BeforeAfterSlider = ({
               評価スコア: {score}%（{isGoalMet ? "Goal達成" : "最高スコア案"}）
             </span>
           </div>
+
+          {elementScores && Object.keys(elementScores).length > 0 && (
+            <div className="text-[11px] text-slate-400">
+              要素別評価:{" "}
+              {ELEMENT_LABELS.filter(([key]) => elementScores[key] !== undefined)
+                .map(([key, label]) => `${label} ${elementScores[key]}`)
+                .join(" / ")}
+              <span className="text-slate-500">（評価スコアはこの重み付き平均）</span>
+            </div>
+          )}
 
           {plan && (
             <div className="grid grid-cols-2 gap-2 text-[11px]">
